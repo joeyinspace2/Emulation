@@ -4,6 +4,6 @@ Use Node.js 22 or newer. Run `npm ci`, install Chromium with `npx playwright ins
 
 Edit source in `src/`; regenerate the tracked HTML with `npm run build`. Recipe contract changes must keep the validator, browser API, CLI, reference docs and skill aligned. Keep original photo files unchanged and keep renderer processing local. Use synthetic fixtures for tests unless you own and can redistribute a sample.
 
-Run `npm run package:release` after changes to distributed files, and commit the updated HTML, ZIP and checksums. CI checks both tests and generated artifacts. Before tagging a release, update the package/lockfile and plugin/marketplace versions together, the download links, and `docs/release-notes.md`. A matching `vX.Y.Z` tag publishes the verified files through GitHub Actions.
+Run `npm run package:release` after changes to distributed files, and commit the updated HTML, ZIP and checksums. CI checks both tests and generated artifacts. Before tagging a release, update the package/lockfile and plugin/marketplace versions together, the download links, and `docs/release-notes.md`. A matching `vX.Y.Z` tag publishes the verified files through GitHub Actions. Alternatively, run the **Verify and release** workflow manually on `main` with **publish** ticked: it creates the tag for the version in `package.json` and publishes the same files.
 
 Report bugs with browser/OS versions, reproduction steps and the recipe if it is shareable. Avoid attaching private photos to public issues. Describe the visible behavior a pull request changes and how it was checked.

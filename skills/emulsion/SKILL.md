@@ -10,7 +10,7 @@ Emulsion is a browser photo renderer with editable JSON recipes. The editor and 
 ## Choose the execution route
 
 - **User's browser:** provide a `.emulsion.json` file. The user opens their photo, chooses **Recipes → Import recipe → Apply recipe**, reviews it, and exports. All processing stays in their browser. A skill cannot access their tab or local photos by itself.
-- **Coding agent with files and a terminal:** use the included CLI. It renders locally in Chromium on the machine containing those files. In a cloud agent, this means the agent workspace, not the user's device. Use this route only with photos supplied to that environment.
+- **Coding agent with files and a terminal:** use the included CLI, and always open the live editor on the photo before editing. It renders locally in Chromium on the machine containing those files. In a cloud agent, this means the agent workspace, not the user's device. Use this route only with photos supplied to that environment.
 - **Chat without execution tools:** deliver the recipe and browser steps. Do not claim to have rendered or inspected pixels, or to have a live ChatGPT/Claude connection. This plugin does not provide a remote MCP service.
 
 ## Locate the tools
@@ -25,16 +25,34 @@ Requires Node.js 22+. Run `node <launcher> --help`. Before CLI inspection/render
 | Validate a recipe | `node <launcher> validate recipe.emulsion.json` |
 | Read decoded photo details | `node <launcher> inspect photo.png --software-gl` |
 | Render | `node <launcher> render photo.png --recipe recipe.emulsion.json --output preview.jpg --software-gl` |
-| Browser editor | `node <launcher> preview` |
+| Live editor for a photo | `node <launcher> preview photo.png --recipe recipe.emulsion.json` |
+| Empty browser editor | `node <launcher> preview` |
 
 Use quoted absolute photo/recipe/output paths when needed. JSON goes to stdout; errors go to stderr with a nonzero exit status. Existing output files require explicit `--overwrite`; originals cannot be overwritten.
+
+## Open the live editor first
+
+Whenever you have the photo file and a terminal, open the editor on that photo **before you make the first edit**, every time, without waiting to be asked. The user watches the edits arrive and can adjust any slider themselves at any point.
+
+1. Choose the recipe path, normally next to the photo (`portrait.emulsion.json`). It does not need to exist: `preview` creates an empty recipe.
+2. Start `node <launcher> preview <photo> --recipe <recipe>` as a background process. It runs until stopped, so never wait for it to exit. Its first stdout line is JSON with the `url`. No setup or Chromium is needed for this command.
+3. Show that URL in the app's built-in browser or preview pane, using whichever browser, preview or port-reporting tool your client provides. Do not only print the link when you can open it. If the client has no such tool, give the user the URL and continue.
+4. Tell the user in one line that the editor is open and that their own adjustments are kept.
+
+The recipe file is the shared state of the session:
+
+- Writing the file updates the open editor within about a second. Apply each edit by saving the recipe file; do not ask the user to import it.
+- Adjustments the user makes in the editor are saved into the same file as a complete recipe. **Read the file again before every change and before the final export**, and change only the settings you mean to change. Overwriting it from memory discards the user's adjustments.
+- Leave the server running while the user may still want to adjust. If a line on stderr names a refused address, the app opens the editor through a forwarded host: restart with `--allow-host <that host>`.
+
+One live editor serves one photo. For another photo, start another `preview` with its own recipe file.
 
 ## Photo workflow
 
 1. Inspect the supplied original visually when tools permit. Use `looks` for real stock IDs; film looks are artistic approximations.
-2. Write a version-1 recipe; use [the contract](references/recipe-format.md) for settings, units, masks and LUT assets. Omitted adjustments reset to defaults. To preserve an existing edit, start from its exported complete recipe.
-3. Validate. Render a preview with `--max 1600`, inspect the image, then refine the recipe. `inspect` reports metadata, not an aesthetic assessment.
-4. Render the requested export, verify success/dimensions, and deliver both image and recipe. The filename extension must match `output.type`. State any unverified behavior.
+2. Open the live editor as above, then write a version-1 recipe to its recipe file; use [the contract](references/recipe-format.md) for settings, units, masks and LUT assets. Omitted adjustments reset to defaults. To preserve an existing edit, start from its complete recipe.
+3. Validate. Render a preview with `--max 1600`, inspect the image, then refine the recipe file. `inspect` reports metadata, not an aesthetic assessment. The editor shows the user the edit; the render is how you see it.
+4. Re-read the recipe file, render the requested export from it, verify success/dimensions, and deliver both image and recipe. The filename extension must match `output.type`. State any unverified behavior.
 
 Example:
 ```json

@@ -1,6 +1,6 @@
 {
   "name": "@joeyinspace2/emulsion",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Browser photo development, editable recipes, and tools for AI agents",
   "type": "commonjs",
   "bin": {

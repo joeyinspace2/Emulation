@@ -14,7 +14,7 @@ function parse(args) {
   if (!commands.includes(command)) throw new Error('Unknown command: ' + command + '. Use emulsion help.');
   const allowed = {
     help: [], looks: [], validate: [], inspect: ['browser','software-gl'],
-    render: ['recipe','output','max','overwrite','browser','software-gl'], preview: ['port'],
+    render: ['recipe','output','max','overwrite','browser','software-gl'], preview: ['recipe','port','allow-host'],
   }[command];
   const flags = {}, positionals = [];
   let literal = false;
@@ -34,7 +34,12 @@ function parse(args) {
     } else positionals.push(arg);
   }
   const count = ['validate','inspect','render'].includes(command) ? 1 : 0;
-  if (positionals.length !== count) throw new Error(command + ' expects ' + count + ' file argument' + (count === 1 ? '' : 's') + '. Use emulsion help.');
+  if (command === 'preview') {
+    if (positionals.length > 1) throw new Error('preview expects at most one photo. Use emulsion help.');
+    if (positionals.length && !flags.recipe) throw new Error('preview with a photo requires --recipe, the file that holds its edits.');
+    if (!positionals.length && (flags.recipe || flags['allow-host'])) throw new Error('--recipe and --allow-host need a photo to preview.');
+    if (flags['allow-host'] && !/^[a-z0-9.-]+$/i.test(flags['allow-host'])) throw new Error('--allow-host must be a host name without a scheme or port.');
+  } else if (positionals.length !== count) throw new Error(command + ' expects ' + count + ' file argument' + (count === 1 ? '' : 's') + '. Use emulsion help.');
   if (command === 'render' && (!flags.recipe || !flags.output)) throw new Error('render requires --recipe and --output.');
   for (const [key,min,max] of [['max',0,32768],['port',1,65535]]) {
     if (flags[key] !== undefined) {
@@ -78,10 +83,23 @@ async function saveOutput(output, bytes, inputs, overwrite) {
   } finally { await rm(temp,{recursive:true,force:true}); }
 }
 
-async function preview(port) {
+const emptyRecipe = JSON.stringify({format:'emulsion-recipe',version:1,settings:{}}, null, 2) + '\n';
+async function preview(flags, photo) {
   const { serveApp } = await import('../lib/server.mjs');
-  const server = await serveApp({port});
-  print({app:'Emulsion',url:server.url});
+  let session;
+  if (photo) {
+    const image = path.resolve(photo), recipe = path.resolve(flags.recipe);
+    if (!(await stat(image)).isFile()) throw new Error('Input image must be a regular file.');
+    // The editor saves edits into the recipe file, so it must never be the photo.
+    const existing = await maybeStat(recipe), info = await stat(image);
+    if (recipe === image || (existing && existing.dev === info.dev && existing.ino === info.ino)) throw new Error('The recipe file must never be the source photo, including aliases.');
+    if (existing) await loadRecipe(recipe);
+    else await writeFile(recipe, emptyRecipe, {flag:'wx'});
+    session = {photo:image, recipe, allowHosts:flags['allow-host'] ? [flags['allow-host']] : [],
+      onBlockedHost: host => process.stderr.write('Emulsion: refused a request for the address "' + host + '". Restart preview with --allow-host ' + host + ' if that is how the editor is opened.\n')};
+  }
+  const server = await serveApp({port:flags.port, session});
+  print(session ? {app:'Emulsion',url:server.url,photo:session.photo,recipe:session.recipe,live:true} : {app:'Emulsion',url:server.url});
   await new Promise(resolve => {
     const stop = () => { process.off('SIGINT',stop); process.off('SIGTERM',stop); resolve(); };
     process.once('SIGINT',stop); process.once('SIGTERM',stop);
@@ -95,11 +113,11 @@ async function main() {
     'emulsion help', 'emulsion looks', 'emulsion validate <recipe>',
     'emulsion inspect <image> [--browser <executable>] [--software-gl]',
     'emulsion render <image> --recipe <file> --output <file> [--max <pixels>] [--overwrite] [--browser <executable>] [--software-gl]',
-    'emulsion preview [--port <port>]',
-  ],browser:'Installed Playwright Chromium, EMULSION_BROWSER, or a detected system Chromium. --software-gl enables SwiftShader.',output:'Use .jpg/.jpeg, .png or .webp. Extension must match recipe.output.type when specified; otherwise it chooses the encoder. --max accepts 0 (full size) through 32768.'});
+    'emulsion preview [<image> --recipe <file> [--allow-host <host>]] [--port <port>]',
+  ],browser:'Installed Playwright Chromium, EMULSION_BROWSER, or a detected system Chromium. --software-gl enables SwiftShader.',output:'Use .jpg/.jpeg, .png or .webp. Extension must match recipe.output.type when specified; otherwise it chooses the encoder. --max accepts 0 (full size) through 32768.',preview:'With an image, the editor opens it with the recipe applied. The recipe file is live: changes to the file appear in the editor, and edits made in the editor are saved to the file. A missing recipe file is created empty. The command runs until interrupted.'});
   if (command === 'looks') return print(recipeModel.looks());
   if (command === 'validate') return print({valid:true,recipe:await loadRecipe(path.resolve(positionals[0]))});
-  if (command === 'preview') return preview(flags.port);
+  if (command === 'preview') return preview(flags, positionals[0]);
   const image = path.resolve(positionals[0]);
   const browserOptions = {browser:flags.browser,softwareGl:!!flags['software-gl']};
   if (command === 'inspect') {

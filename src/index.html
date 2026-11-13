@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emulsion</title>
+<style>
+/*CSS*/
+</style>
+</head>
+<body data-mod="library" data-empty="1" data-tool="none">
+<header>
+  <div class="brand"><span class="mark"></span>Emulsion</div>
+  <nav class="mods" aria-label="Module">
+    <button type="button" data-mod="library" class="on" title="Library (G)">Library</button>
+    <button type="button" data-mod="develop" title="Develop (D)">Develop</button>
+  </nav>
+  <div id="toolbar" class="devonly">
+    <button type="button" data-tool="crop" title="Crop and straighten (C)">Crop</button>
+    <button type="button" data-tool="heal" title="Heal and clone (Q)">Heal</button>
+    <button type="button" data-tool="mask" title="Masks (M)">Mask</button>
+    <span class="sep"></span>
+    <button type="button" data-act="before" title="Show the original (\)">Before</button>
+    <button type="button" data-act="split" title="Split before / after (Y)">Split</button>
+    <button type="button" data-act="clip" title="Show clipped highlights and shadows (J)">Clipping</button>
+    <span class="sep"></span>
+    <button type="button" data-act="fit" title="Fit to window (F)">Fit</button>
+    <button type="button" data-act="one" title="Actual pixels (Z)">100%</button>
+    <span id="zoomLabel" class="mono"></span>
+    <span class="sep"></span>
+    <button type="button" data-act="undo" title="Undo (Cmd/Ctrl+Z)">Undo</button>
+    <button type="button" data-act="redo" title="Redo (Shift+Cmd/Ctrl+Z)">Redo</button>
+    <button type="button" data-act="reset" title="Remove every adjustment from this photo">Reset</button>
+  </div>
+  <div class="hright">
+    <span id="saveState" class="dimtxt"></span>
+    <button type="button" data-act="open" title="Open a folder of photos as your library">Open folder</button>
+    <button type="button" data-act="add" title="Add individual photos">Add photos</button>
+    <button type="button" data-act="export" class="primary" title="Export (Cmd/Ctrl+E)">Export</button>
+  </div>
+</header>
+
+<main>
+  <!-- LIBRARY -->
+  <section id="library">
+    <aside class="side">
+      <h3 id="libName"></h3>
+      <div id="folders" class="list"></div>
+      <h4>Filter</h4>
+      <label class="fl">Rating<select id="fRating"><option value="0">Any</option><option value="1">★ and up</option><option value="2">★★ and up</option><option value="3">★★★ and up</option><option value="4">★★★★ and up</option><option value="5">★★★★★</option></select></label>
+      <label class="fl">Flag<select id="fFlag"><option value="all">Any</option><option value="pick">Picked</option><option value="none">Unflagged</option><option value="reject">Rejected</option></select></label>
+      <label class="fl">Type<select id="fKind"><option value="all">Any</option><option value="raw">Raw</option><option value="img">JPEG / PNG / WebP</option></select></label>
+      <label class="fl">Edits<select id="fEdited"><option value="all">Any</option><option value="yes">Edited</option><option value="no">Unedited</option></select></label>
+      <h4>Shortcuts</h4>
+      <p class="hint">Double-click or Enter opens a photo. 1–5 rate, 0 clears. P pick, X reject, U unflag. Shift or Cmd/Ctrl-click to select several.</p>
+    </aside>
+    <div class="gridwrap">
+      <div class="gridbar">
+        <input id="search" type="search" placeholder="Search file names" aria-label="Search file names">
+        <label class="fl inline">Sort<select id="sort"><option value="name">Name</option><option value="rating">Rating</option><option value="edited">Last edited</option><option value="type">Type</option></select></label>
+        <label class="fl inline">Size<input id="thumbSize" type="range" min="110" max="340" value="190" aria-label="Thumbnail size"></label>
+        <span id="count" class="dimtxt"></span>
+        <span class="grow"></span>
+        <div id="selbar"><span id="selInfo" class="dimtxt"></span>
+          <button type="button" data-act="copy" title="Copy this photo's edit (Shift+Cmd/Ctrl+C)">Copy edit</button>
+          <button type="button" data-act="paste" data-need="clip" title="Paste the copied edit onto the selection (Shift+Cmd/Ctrl+V)">Paste edit</button>
+          <button type="button" data-act="resetSel">Reset</button>
+        </div>
+      </div>
+      <div id="grid" role="listbox" aria-label="Photos"></div>
+      <p id="noMatch" class="empty hide">No photos match these filters.</p>
+      <div id="welcome">
+        <div class="wbox">
+          <div class="wmark"></div>
+          <h1>Emulsion</h1>
+          <p class="lead">A darkroom in one file. Raw development, film stocks, halation and grain, running entirely on this computer.</p>
+          <div class="wbtns">
+            <button type="button" class="primary big" data-act="open">Open a folder of photos</button>
+            <button type="button" class="big" data-act="add">Add individual photos</button>
+            <button type="button" class="big hide" id="reopen" data-act="reopen"></button>
+          </div>
+          <p id="welcomeMsg" class="dimtxt"></p>
+          <p class="hint">Or drop photos or a folder anywhere on this window. Raw (CR2, CR3, NEF, ARW, RAF, DNG, ORF, RW2 and more), JPEG, PNG, WebP and AVIF are supported. Your originals are never changed: edits are stored in a catalog file beside them.</p>
+          <p id="fsNote" class="hint warn hide">This browser cannot keep a folder open or write a catalog file, so edits are stored in the browser and exports go to your downloads. Chrome or Edge gives you the full library.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DEVELOP -->
+  <section id="develop">
+    <aside id="left">
+      <details class="sec" open><summary>Looks &amp; presets</summary><div class="secbody" id="presets"></div></details>
+      <details class="sec" open><summary>History</summary><div class="secbody list" id="history"></div></details>
+      <details class="sec" open><summary>Info</summary><div class="secbody" id="info"></div></details>
+    </aside>
+    <div id="center">
+      <div id="stage">
+        <canvas id="gl"></canvas><canvas id="ov"></canvas>
+        <div id="cropbar">
+          <label class="fl inline">Aspect<select id="aspect"><option value="free">Free</option><option value="original">Original</option><option value="1:1">1 : 1</option><option value="5:4">5 : 4</option><option value="4:3">4 : 3</option><option value="3:2">3 : 2</option><option value="16:9">16 : 9</option><option value="2:1">2 : 1</option></select></label>
+          <button type="button" data-act="swapAspect" title="Swap portrait / landscape">Swap</button>
+          <div id="cropAngle"></div>
+          <button type="button" data-act="rotL">Rotate left</button><button type="button" data-act="rotR">Rotate right</button>
+          <button type="button" data-act="flipH">Flip H</button><button type="button" data-act="flipV">Flip V</button>
+          <button type="button" data-act="cropReset">Reset</button><button type="button" class="primary" data-act="cropDone">Done</button>
+        </div>
+        <div id="busy" class="hide" role="status"></div>
+        <div id="toolhint"></div>
+      </div>
+      <div id="strip" aria-label="Filmstrip"></div>
+    </div>
+    <aside id="right">
+      <div class="histbox"><canvas id="hist" width="512" height="160"></canvas><i id="clipL" title="Shadows are clipping"></i><i id="clipR" title="Highlights are clipping"></i></div>
+      <div id="panels"></div>
+    </aside>
+  </section>
+</main>
+
+<dialog id="exportDlg">
+  <form id="exportForm" method="dialog">
+    <h2>Export <span id="exportWhat"></span></h2>
+    <label class="fl">Format<select id="exType"><option value="image/jpeg">JPEG</option><option value="image/png">PNG (lossless)</option><option value="image/webp">WebP</option></select></label>
+    <label class="fl">Quality <span id="exQv" class="mono">92</span><input id="exQuality" type="range" min="40" max="100" value="92"></label>
+    <label class="fl">Size<select id="exSize"><option value="full">Full resolution</option><option value="4096">4096 px long edge</option><option value="3000">3000 px long edge</option><option value="2048">2048 px long edge</option><option value="1600">1600 px long edge</option><option value="1080">1080 px long edge</option></select></label>
+    <label class="fl">File name suffix<input id="exSuffix" type="text" value="-edit" spellcheck="false"></label>
+    <p id="exportWhere" class="hint"></p>
+    <div class="dlgbtns"><button type="button" id="exCancel">Cancel</button><button type="submit" class="primary">Export</button></div>
+  </form>
+</dialog>
+<div id="exportProg" class="hide" role="status"></div>
+<div id="dropveil">Drop photos or a folder to open them</div>
+<div id="fatal" class="hide"></div>
+<div id="toasts" aria-live="polite"></div>
+<input id="fileInput" class="hide" type="file" multiple accept="image/*,.cr2,.cr3,.crw,.nef,.nrw,.arw,.srf,.sr2,.raf,.orf,.rw2,.dng,.pef,.srw,.x3f,.erf,.kdc,.dcr,.mrw,.3fr,.iiq,.mef,.mos,.raw,.rwl,.fff">
+<input id="dirInput" class="hide" type="file" webkitdirectory multiple>
+<input id="presetFile" class="hide" type="file" accept=".json,application/json">
+
+<script type="text/plain" id="libraw-worker">/*LIBRAW_WORKER*/</script>
+<script type="text/plain" id="libraw-wasm">/*LIBRAW_WASM*/</script>
+<script>
+/*JS*/
+</script>
+</body>
+</html>

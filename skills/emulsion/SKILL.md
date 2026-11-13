@@ -21,7 +21,7 @@ Requires Node.js 22+. Run `node <launcher> --help`. Before CLI inspection/render
 
 | Job | Command |
 | --- | --- |
-| Available films and looks | `node <launcher> looks` |
+| Available films, lab scanners and looks | `node <launcher> looks` |
 | Validate a recipe | `node <launcher> validate recipe.emulsion.json` |
 | Read decoded photo details | `node <launcher> inspect photo.png --software-gl` |
 | Render | `node <launcher> render photo.png --recipe recipe.emulsion.json --output preview.jpg --software-gl` |
@@ -58,5 +58,14 @@ Example:
 ```json
 {"format":"emulsion-recipe","version":1,"settings":{"film":"port400","exposure":0.4,"grain":15},"output":{"type":"image/jpeg","quality":0.92,"max":0}}
 ```
+
+## Film stock and lab scanner
+
+A film look has two parts: `film` is the stock, and `scan` is the machine that scanned it (`none`, `frontier` for the Fujifilm Frontier SP-3000, `noritsu` for the Noritsu HS-1800). When the user asks for a lab or scanner look, or names one of these machines, set `scan` and adjust that machine's own object; see the Lab scanner section of [the contract](references/recipe-format.md).
+
+- `frontier`: punchy contrast, deep blacks, cool cyan shadows, golden skin. Suits bright, saturated colour work.
+- `noritsu`: gentler contrast, open shadows, held highlights, pinker skin. Suits soft light, portraits and black and white.
+- Correct colour the way a lab does, with the machine's `d`, `c`, `m`, `y` keys (whole steps; positive density is darker, positive colour adds that colour), before reaching for other colour settings.
+- These are models, not measured profiles. Describe them to the user as emulations.
 
 The browser's **Use current edits** captures slider changes and embeds selected LUT/brush assets. Source names are informational, never paths to fetch. Changing `aspect` alone does not crop pixels: specify crop geometry too. Exact pixels can vary across GPUs and browser versions.

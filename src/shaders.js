@@ -19,6 +19,18 @@ vec3 rgb2hsv(vec3 c){ vec4 K=vec4(0.,-1./3.,2./3.,-1.); vec4 p=mix(vec4(c.bg,K.w
 vec3 hsv2rgb(vec3 c){ vec3 p=abs(fract(c.xxx+vec3(1.,2./3.,1./3.))*6.-3.); return c.z*mix(vec3(1.),clamp(p-1.,0.,1.),c.y); }
 `;
 
+/* The print border is drawn by whichever pass runs last. */
+const BORDER = `uniform float u_border,u_borderRound; uniform vec3 u_borderCol; uniform vec2 u_full;
+vec3 border(vec3 v){
+  if(u_border>0.){
+    vec2 p=v_uv*u_full; float b=u_border*min(u_full.x,u_full.y); float rr=u_borderRound*b*1.5;
+    vec2 q=abs(p-u_full*0.5)-(u_full*0.5-b-rr); float sd=length(max(q,0.))+min(max(q.x,q.y),0.)-rr;
+    v=mix(v,u_borderCol,smoothstep(-0.5,0.5,sd/max(fwidth(sd),1e-4)*0.5));
+  }
+  return v;
+}
+`;
+
 const SH = {};
 
 SH.convert = `uniform usampler2D u_t;
@@ -187,9 +199,9 @@ SH.finish = `uniform sampler2D u_a,u_h1,u_h2,u_bm; uniform sampler3D u_lut; unif
 uniform vec3 u_halTint; uniform float u_halAmt,u_bloomAmt;
 uniform float u_filmAmt,u_fSat,u_fShoulder,u_fExp; uniform int u_fMono;
 uniform mat3 u_fM; uniform vec3 u_fGamma,u_fLo,u_fHi,u_fShT,u_fHiT,u_fMonoW,u_fTone;
-uniform vec4 u_vig; uniform float u_fade; uniform vec4 u_grain; uniform vec2 u_full; uniform float u_seed;
-uniform vec3 u_leak; uniform vec2 u_dust; uniform float u_border,u_borderRound; uniform vec3 u_borderCol;
-vec3 sc3(vec3 x,vec3 k){ x=clamp(x,0.,1.); vec3 lo=0.5*pow(2.*x,k), hi=1.-0.5*pow(2.*(1.-x),k); return mix(lo,hi,step(0.5,x)); }
+uniform vec4 u_vig; uniform float u_fade; uniform vec4 u_grain; uniform float u_seed;
+uniform vec3 u_leak; uniform vec2 u_dust;
+`+BORDER+`vec3 sc3(vec3 x,vec3 k){ x=clamp(x,0.,1.); vec3 lo=0.5*pow(2.*x,k), hi=1.-0.5*pow(2.*(1.-x),k); return mix(lo,hi,step(0.5,x)); }
 vec3 film(vec3 c){
   c=max(u_fM*c,0.)*exp2(u_fExp);
   if(u_fMono==1) c=vec3(max(dot(c,u_fMonoW),0.));
@@ -254,14 +266,44 @@ void main(){
       float s=1.-smoothstep(0.012,0.03,abs(f-cx-wob)); s*=smoothstep(0.35,0.6,vnoise(vec2(i*3.1,v_uv.y*asp.y*9.+u_seed)));
       v=mix(v,vec3(0.93),s*0.7); }
   }
-  // border
-  if(u_border>0.){
-    vec2 p=v_uv*u_full; float b=u_border*min(u_full.x,u_full.y); float rr=u_borderRound*b*1.5;
-    vec2 q=abs(p-u_full*0.5)-(u_full*0.5-b-rr); float sd=length(max(q,0.))+min(max(q.x,q.y),0.)-rr;
-    v=mix(v,u_borderCol,smoothstep(-0.5,0.5,sd/max(fwidth(sd),1e-4)*0.5));
-  }
+  v=border(v);
   v+=(hash12(gl_FragCoord.xy+0.37)-0.5)/255.;
   o=vec4(clamp(v,0.,1.),A.a);
+}`;
+
+/* Lab scanner: reads the finished film frame (grain, halation and dust included) the way a minilab does. */
+SH.scan = `uniform sampler2D u_t,u_m; uniform vec2 u_px; uniform float u_r;
+uniform mat3 u_sM; uniform vec3 u_sGain,u_sShT,u_sHiT; uniform vec2 u_sK,u_sHyper,u_sBW,u_sEdge; uniform float u_sKnee,u_sSat; uniform vec3 u_sSharp;
+`+BORDER+`
+vec3 tone(vec3 x){ // contrast about mid-grey, with its own steepness below and above
+  const float p=0.46; vec3 k=mix(vec3(u_sK.x),vec3(u_sK.y),smoothstep(p-0.25,p+0.25,x));
+  vec3 lo=p*pow(x/p,k), hi=1.-(1.-p)*pow((1.-x)/(1.-p),k); return mix(lo,hi,step(p,x)); }
+void main(){
+  vec4 A=texture(u_t,v_uv); vec3 c0=A.rgb; vec2 r=u_px*u_r;
+  // sharpening that separates edges from grain: flat areas are smoothed, edges are steepened
+  vec3 L=texture(u_t,v_uv-vec2(r.x,0.)).rgb, R=texture(u_t,v_uv+vec2(r.x,0.)).rgb, U=texture(u_t,v_uv+vec2(0.,r.y)).rgb, D=texture(u_t,v_uv-vec2(0.,r.y)).rgb;
+  vec3 UL=texture(u_t,v_uv+vec2(-r.x,r.y)).rgb, UR=texture(u_t,v_uv+r).rgb, DL=texture(u_t,v_uv-r).rgb, DR=texture(u_t,v_uv+vec2(r.x,-r.y)).rgb;
+  vec3 mean=(c0*4.+(L+R+U+D)*2.+UL+UR+DL+DR)/16.;
+  float gx=luma(R-L)+0.5*luma(UR+DR-UL-DL), gy=luma(U-D)+0.5*luma(UL+UR-DL-DR);
+  float e=smoothstep(u_sEdge.x,u_sEdge.y,length(vec2(gx,gy))*0.5);
+  vec3 v=mix(c0,mean,u_sSharp.y*(1.-e));
+  v=clamp(v+luma(c0-mean)*u_sSharp.x*mix(u_sSharp.z,1.,e),0.,1.);
+  // exposure through the film: density and colour keys act on light, before the tone curve
+  vec3 c=dec(v)*u_sGain;
+  // dynamic-range compression guided by a wide blur: lifts large dark areas, holds large bright ones, keeps detail
+  float M=clamp(luma(texture(u_m,v_uv).rgb),0.,1.);
+  float wS=pow(1.-M,3.), wH=smoothstep(0.45,1.,M); wH*=wH;
+  c*=exp2(u_sHyper.x*wS-u_sHyper.y*wH);
+  c=max(u_sM*c,0.);
+  vec3 x=enc(c);
+  x=mix(x,u_sKnee+(1.-u_sKnee)*tanh((x-u_sKnee)/(1.-u_sKnee)),step(u_sKnee,x));
+  x=tone(clamp(x,0.,1.));
+  x=(x-u_sBW.x)/(u_sBW.y-u_sBW.x);
+  vec3 d=1.-clamp(x,0.,1.), h=clamp(x,0.,1.); x+=u_sShT*d*d*d*4.+u_sHiT*h*h*h*4.;
+  x=mix(vec3(luma(x)),x,u_sSat);
+  x=border(clamp(x,0.,1.));
+  x+=(hash12(gl_FragCoord.xy+0.71)-0.5)/255.;
+  o=vec4(clamp(x,0.,1.),A.a);
 }`;
 
 SH.display = `uniform sampler2D u_f,u_g; uniform mat3 u_V; uniform vec2 u_res; uniform float u_split;

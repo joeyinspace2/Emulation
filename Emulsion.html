@@ -3367,6 +3367,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;heigh
 input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:#e9e9ec;border:0}
 input[type=range]:hover::-webkit-slider-thumb{background:var(--acc)}
 .trk.temp{--trk:linear-gradient(90deg,#3d7fe6,#8a8a8a,#e6c62f)}
+/* key tracks run from the opposite colour to the key's own */
+.trk.cyan{--trk:linear-gradient(90deg,#d9534a,#8a8a8a,#35b8c9)}
+.row .seg{grid-column:2/4}
+.row:has(.seg){height:30px}
 .trk.tint{--trk:linear-gradient(90deg,#46b85a,#8a8a8a,#d94fb5)}
 .trk.hue{--trk:linear-gradient(90deg,#3b3b40,var(--c))}
 .trk.rainbow{--trk:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)}
@@ -3589,6 +3593,18 @@ vec3 rgb2hsv(vec3 c){ vec4 K=vec4(0.,-1./3.,2./3.,-1.); vec4 p=mix(vec4(c.bg,K.w
 vec3 hsv2rgb(vec3 c){ vec3 p=abs(fract(c.xxx+vec3(1.,2./3.,1./3.))*6.-3.); return c.z*mix(vec3(1.),clamp(p-1.,0.,1.),c.y); }
 `;
 
+/* The print border is drawn by whichever pass runs last. */
+const BORDER = `uniform float u_border,u_borderRound; uniform vec3 u_borderCol; uniform vec2 u_full;
+vec3 border(vec3 v){
+  if(u_border>0.){
+    vec2 p=v_uv*u_full; float b=u_border*min(u_full.x,u_full.y); float rr=u_borderRound*b*1.5;
+    vec2 q=abs(p-u_full*0.5)-(u_full*0.5-b-rr); float sd=length(max(q,0.))+min(max(q.x,q.y),0.)-rr;
+    v=mix(v,u_borderCol,smoothstep(-0.5,0.5,sd/max(fwidth(sd),1e-4)*0.5));
+  }
+  return v;
+}
+`;
+
 const SH = {};
 
 SH.convert = `uniform usampler2D u_t;
@@ -3757,9 +3773,9 @@ SH.finish = `uniform sampler2D u_a,u_h1,u_h2,u_bm; uniform sampler3D u_lut; unif
 uniform vec3 u_halTint; uniform float u_halAmt,u_bloomAmt;
 uniform float u_filmAmt,u_fSat,u_fShoulder,u_fExp; uniform int u_fMono;
 uniform mat3 u_fM; uniform vec3 u_fGamma,u_fLo,u_fHi,u_fShT,u_fHiT,u_fMonoW,u_fTone;
-uniform vec4 u_vig; uniform float u_fade; uniform vec4 u_grain; uniform vec2 u_full; uniform float u_seed;
-uniform vec3 u_leak; uniform vec2 u_dust; uniform float u_border,u_borderRound; uniform vec3 u_borderCol;
-vec3 sc3(vec3 x,vec3 k){ x=clamp(x,0.,1.); vec3 lo=0.5*pow(2.*x,k), hi=1.-0.5*pow(2.*(1.-x),k); return mix(lo,hi,step(0.5,x)); }
+uniform vec4 u_vig; uniform float u_fade; uniform vec4 u_grain; uniform float u_seed;
+uniform vec3 u_leak; uniform vec2 u_dust;
+`+BORDER+`vec3 sc3(vec3 x,vec3 k){ x=clamp(x,0.,1.); vec3 lo=0.5*pow(2.*x,k), hi=1.-0.5*pow(2.*(1.-x),k); return mix(lo,hi,step(0.5,x)); }
 vec3 film(vec3 c){
   c=max(u_fM*c,0.)*exp2(u_fExp);
   if(u_fMono==1) c=vec3(max(dot(c,u_fMonoW),0.));
@@ -3824,14 +3840,44 @@ void main(){
       float s=1.-smoothstep(0.012,0.03,abs(f-cx-wob)); s*=smoothstep(0.35,0.6,vnoise(vec2(i*3.1,v_uv.y*asp.y*9.+u_seed)));
       v=mix(v,vec3(0.93),s*0.7); }
   }
-  // border
-  if(u_border>0.){
-    vec2 p=v_uv*u_full; float b=u_border*min(u_full.x,u_full.y); float rr=u_borderRound*b*1.5;
-    vec2 q=abs(p-u_full*0.5)-(u_full*0.5-b-rr); float sd=length(max(q,0.))+min(max(q.x,q.y),0.)-rr;
-    v=mix(v,u_borderCol,smoothstep(-0.5,0.5,sd/max(fwidth(sd),1e-4)*0.5));
-  }
+  v=border(v);
   v+=(hash12(gl_FragCoord.xy+0.37)-0.5)/255.;
   o=vec4(clamp(v,0.,1.),A.a);
+}`;
+
+/* Lab scanner: reads the finished film frame (grain, halation and dust included) the way a minilab does. */
+SH.scan = `uniform sampler2D u_t,u_m; uniform vec2 u_px; uniform float u_r;
+uniform mat3 u_sM; uniform vec3 u_sGain,u_sShT,u_sHiT; uniform vec2 u_sK,u_sHyper,u_sBW,u_sEdge; uniform float u_sKnee,u_sSat; uniform vec3 u_sSharp;
+`+BORDER+`
+vec3 tone(vec3 x){ // contrast about mid-grey, with its own steepness below and above
+  const float p=0.46; vec3 k=mix(vec3(u_sK.x),vec3(u_sK.y),smoothstep(p-0.25,p+0.25,x));
+  vec3 lo=p*pow(x/p,k), hi=1.-(1.-p)*pow((1.-x)/(1.-p),k); return mix(lo,hi,step(p,x)); }
+void main(){
+  vec4 A=texture(u_t,v_uv); vec3 c0=A.rgb; vec2 r=u_px*u_r;
+  // sharpening that separates edges from grain: flat areas are smoothed, edges are steepened
+  vec3 L=texture(u_t,v_uv-vec2(r.x,0.)).rgb, R=texture(u_t,v_uv+vec2(r.x,0.)).rgb, U=texture(u_t,v_uv+vec2(0.,r.y)).rgb, D=texture(u_t,v_uv-vec2(0.,r.y)).rgb;
+  vec3 UL=texture(u_t,v_uv+vec2(-r.x,r.y)).rgb, UR=texture(u_t,v_uv+r).rgb, DL=texture(u_t,v_uv-r).rgb, DR=texture(u_t,v_uv+vec2(r.x,-r.y)).rgb;
+  vec3 mean=(c0*4.+(L+R+U+D)*2.+UL+UR+DL+DR)/16.;
+  float gx=luma(R-L)+0.5*luma(UR+DR-UL-DL), gy=luma(U-D)+0.5*luma(UL+UR-DL-DR);
+  float e=smoothstep(u_sEdge.x,u_sEdge.y,length(vec2(gx,gy))*0.5);
+  vec3 v=mix(c0,mean,u_sSharp.y*(1.-e));
+  v=clamp(v+luma(c0-mean)*u_sSharp.x*mix(u_sSharp.z,1.,e),0.,1.);
+  // exposure through the film: density and colour keys act on light, before the tone curve
+  vec3 c=dec(v)*u_sGain;
+  // dynamic-range compression guided by a wide blur: lifts large dark areas, holds large bright ones, keeps detail
+  float M=clamp(luma(texture(u_m,v_uv).rgb),0.,1.);
+  float wS=pow(1.-M,3.), wH=smoothstep(0.45,1.,M); wH*=wH;
+  c*=exp2(u_sHyper.x*wS-u_sHyper.y*wH);
+  c=max(u_sM*c,0.);
+  vec3 x=enc(c);
+  x=mix(x,u_sKnee+(1.-u_sKnee)*tanh((x-u_sKnee)/(1.-u_sKnee)),step(u_sKnee,x));
+  x=tone(clamp(x,0.,1.));
+  x=(x-u_sBW.x)/(u_sBW.y-u_sBW.x);
+  vec3 d=1.-clamp(x,0.,1.), h=clamp(x,0.,1.); x+=u_sShT*d*d*d*4.+u_sHiT*h*h*h*4.;
+  x=mix(vec3(luma(x)),x,u_sSat);
+  x=border(clamp(x,0.,1.));
+  x+=(hash12(gl_FragCoord.xy+0.71)-0.5)/255.;
+  o=vec4(clamp(x,0.,1.),A.a);
 }`;
 
 SH.display = `uniform sampler2D u_f,u_g; uniform mat3 u_V; uniform vec2 u_res; uniform float u_split;
@@ -4113,18 +4159,29 @@ class Engine {
     }
     // 5. film, finishing
     const lutTex = S.lut && o.lut ? this.setLut(S.lut, o.lut) : null;
-    const F = this.rt('F', W, H, 'u8');
+    const scan = scanParams(S, !!film.mono || S.bw);
+    const border = { u_border: o.uncropped ? 0 : S.border / 100 * 0.18, u_borderRound: S.borderRound / 100, u_borderCol: S.borderColor === 'black' ? [0.02, 0.02, 0.02] : S.borderColor === 'cream' ? [0.96, 0.94, 0.88] : [1, 1, 1], u_full: [g.outW, g.outH] };
+    // With a scanner, the film frame is finished at full precision and the scan pass makes the final image.
+    const F = this.rt('F', W, H, 'u8'), filmOut = scan ? this.rt('Fs', W, H, 'f16') : F;
     const ht = hsv2rgb(((S.halHue % 360) + 360) % 360 / 360, 0.85, 1);
-    this.draw(F, 'finish', {
+    this.draw(filmOut, 'finish', {
       u_a: A.tex, u_h1: h1, u_h2: h2, u_bm: bm, u_lut: lutTex, u_lutAmt: lutTex ? S.lutAmt / 100 : 0,
       u_halTint: ht, u_halAmt: h1 ? S.halation / 100 * 1.6 : 0, u_bloomAmt: bm ? S.bloom / 100 * 0.9 : 0,
       u_filmAmt: film.id === 'none' ? 0 : S.filmAmt / 100, u_fSat: film.sat, u_fShoulder: film.shoulder, u_fExp: film.exp, u_fMono: film.mono ? 1 : 0,
       u_fM: film.m, u_fGamma: film.gamma, u_fLo: film.lo, u_fHi: film.hi, u_fShT: film.sh, u_fHiT: film.hl, u_fMonoW: film.mono || [0.3, 0.6, 0.1], u_fTone: film.tone,
       u_vig: [S.vigAmount / 100, S.vigMid / 100, S.vigRound / 100, Math.max(0.02, S.vigFeather / 100)], u_fade: S.fade / 100,
-      u_grain: [S.grain / 100, 0.6 + S.grainSize / 100 * 3.4, S.grainRough / 100, S.grainColor / 100], u_full: [g.outW, g.outH], u_seed: S.fxSeed,
+      u_grain: [S.grain / 100, 0.6 + S.grainSize / 100 * 3.4, S.grainRough / 100, S.grainColor / 100], u_seed: S.fxSeed,
       u_leak: [S.leak / 100, S.leakSeed, ((S.leakHue % 360) + 360) % 360 / 360], u_dust: [S.dust / 100, S.scratches / 100],
-      u_border: o.uncropped ? 0 : S.border / 100 * 0.18, u_borderRound: S.borderRound / 100, u_borderCol: S.borderColor === 'black' ? [0.02, 0.02, 0.02] : S.borderColor === 'cream' ? [0.96, 0.94, 0.88] : [1, 1, 1]
+      ...border, u_border: scan ? 0 : border.u_border
     });
+    if (scan) {
+      const wide = this.blur('sm', filmOut.tex, W, H, long * 0.03, false);
+      this.draw(F, 'scan', {
+        u_t: filmOut.tex, u_m: wide, u_px: [1 / W, 1 / H], u_r: Math.max(0.6, scale),
+        u_sM: scan.m, u_sGain: scan.gain, u_sShT: scan.shT, u_sHiT: scan.hlT, u_sK: [scan.kS, scan.kH], u_sHyper: [scan.hyS, scan.hyH],
+        u_sBW: [scan.black, scan.white], u_sEdge: scan.edge, u_sKnee: scan.knee, u_sSat: scan.sat, u_sSharp: [scan.sharp, scan.grainSup, scan.floor], ...border
+      });
+    }
     return this.last = { F, G, W, H, geo: g, scale };
   }
 
@@ -4189,6 +4246,9 @@ const DEF = {
   fade: 0, leak: 0, leakSeed: 1, leakHue: 22, dust: 0, scratches: 0, fxSeed: 1,
   border: 0, borderRound: 0, borderColor: 'white',
   lut: null, lutAmt: 100,
+  scan: 'none',
+  frontier: { d: 0, c: 0, m: 0, y: 0, hiTone: 0, shTone: 0, hyperHi: 2, hyperSh: 2, sat: 0, sharp: 2, grainSup: 2 },
+  noritsu: { d: 0, c: 0, m: 0, y: 0, acOverall: 0, acShadow: 0, acHighlight: 0, chroma: 100, sharp: 4, grainSup: 10 },
   crop: { cx: 0.5, cy: 0.5, w: 1, h: 1 }, angle: 0, rot90: 0, flipH: false, flipV: false, aspect: 'free',
   masks: [], spots: []
 };
@@ -4244,6 +4304,57 @@ const STOCKS = [
 ];
 const STOCK_BY_ID = Object.fromEntries(STOCKS.map(s => [s.id, s]));
 
+/* ---------- lab scanners ----------
+   A minilab scanner is the second half of a film photograph: it lights the developed film, meters it,
+   and renders the positive with its own tone curve, colour response, dynamic-range compression and sharpening.
+   These are models of the published controls and the widely described character of each machine.
+   They are not measured profiles and are not affiliated with either manufacturer.
+
+   Both machines correct colour the way a darkroom printer does, by changing the exposure each colour
+   layer receives before the tone curve. One density key is 1/6 stop; one colour key is 1/12 stop. */
+const SCANNERS = [
+  { id: 'none', name: 'None', desc: 'No scanner stage: the standard rendering.' },
+  { id: 'frontier', name: 'Frontier SP-3000', desc: 'Fujifilm minilab scanner. Punchy contrast, deep blacks, cool cyan shadows, golden skin, crisp edges over smoothed grain.',
+    // Narrow-band red, green and blue LEDs give strong colour separation; reds lean yellow, greens lean cyan.
+    m: [1.04, -0.03, -0.01, -0.02, 1.04, -0.02, -0.035, 0.04, 0.995],
+    con: 1.08, black: 0.018, white: 0.965, knee: 0.97, shT: [-0.004, 0.001, 0.003], hlT: [0.003, 0.001, -0.004], sat: 1.05,
+    edge: [0.035, 0.11], floor: 0.12 },
+  { id: 'noritsu', name: 'Noritsu HS-1800', desc: 'Noritsu line-sensor scanner. Gentler contrast, open shadows and held highlights, neutral shadows, pinker skin, sharpening that keeps the grain.',
+    // Broader colour response: reds lean pink, greens lean yellow.
+    m: [1.0, 0.04, -0.04, -0.02, 1.02, 0, 0.02, -0.03, 1.01],
+    con: 0.95, black: -0.015, white: 0.99, knee: 0.9, shT: [0.001, 0, -0.001], hlT: [0.004, -0.002, 0], sat: 0.99,
+    edge: [0.015, 0.06], floor: 0.65 }
+];
+/* Each machine's own controls: [min, max]. All are whole steps, as on the machines. */
+const KEYS = { d: [-15, 15], c: [-15, 15], m: [-15, 15], y: [-15, 15] };
+const SCAN_RANGES = {
+  frontier: { ...KEYS, hiTone: [-1, 1], shTone: [-1, 1], hyperHi: [0, 4], hyperSh: [0, 4], sat: [-5, 5], sharp: [0, 5], grainSup: [0, 5] },
+  noritsu: { ...KEYS, acOverall: [-5, 5], acShadow: [-5, 5], acHighlight: [-5, 5], chroma: [0, 200], sharp: [0, 10], grainSup: [0, 50] }
+};
+const SCANNER_BY_ID = Object.fromEntries(SCANNERS.map(s => [s.id, s]));
+const TONE_STEP = [0.87, 1, 1.15]; // soft, standard, hard
+/* Settings -> the numbers the scan pass uses. null means no scanner stage. */
+function scanParams(S, mono) {
+  const sc = SCANNER_BY_ID[S.scan]; if (!sc || sc.id === 'none') return null;
+  const k = S[sc.id], zero = [0, 0, 0];
+  // + density prints darker; + cyan, magenta or yellow adds that colour by holding back red, green or blue.
+  const gain = [k.c, k.m, k.y].map(v => Math.pow(2, -(k.d / 6 + v / 12)));
+  const out = { id: sc.id, m: sc.m, gain, black: sc.black, white: sc.white, knee: sc.knee, shT: mono ? zero : sc.shT, hlT: mono ? zero : sc.hlT, edge: sc.edge, floor: sc.floor };
+  if (sc.id === 'frontier') {
+    // Tone adjustment (soft / standard / hard, separately for shadows and highlights) and Hypertone levels.
+    out.kS = sc.con * TONE_STEP[k.shTone + 1]; out.kH = sc.con * TONE_STEP[k.hiTone + 1];
+    out.hyS = k.hyperSh * 0.17; out.hyH = k.hyperHi * 0.08;
+    out.sat = sc.sat * (1 + k.sat * 0.05); out.sharp = k.sharp * 0.35; out.grainSup = k.grainSup * 0.18;
+  } else {
+    // Auto contrast: overall flattens the curve; shadow and highlight open or hold each end.
+    out.kS = out.kH = sc.con * (1 - 0.025 * k.acOverall);
+    out.hyS = Math.max(0, 0.3 + 0.07 * k.acShadow); out.hyH = Math.max(0, 0.14 + 0.07 * k.acHighlight);
+    out.sat = sc.sat * k.chroma / 100; out.sharp = k.sharp * 0.22; out.grainSup = k.grainSup / 50 * 0.9;
+  }
+  if (mono) out.m = I3;
+  return out;
+}
+
 /* ---------- built-in looks ---------- */
 const LOOKS = [
   ['Clean boost', { contrast: 12, vibrance: 18, clarity: 8, shadows: 10, highlights: -15, sharpen: 30 }],
@@ -4277,14 +4388,14 @@ function parseCube(text) {
 }
 
 /* Pure model access for the local recipe validator and agent CLI. */
-if (typeof module !== 'undefined' && module.exports) module.exports = { DEF, newSettings, STOCKS, LOOKS, MASK_ADJ };
+if (typeof module !== 'undefined' && module.exports) module.exports = { DEF, newSettings, STOCKS, LOOKS, MASK_ADJ, SCANNERS, SCAN_RANGES, scanParams };
 
 'use strict';
 /* Pure, portable recipe contract. Keep declarations inside the closure: browser builds
    concatenate this file with film.js and the rest of the editor. */
 (function (root, factory) {
   const model = typeof module !== 'undefined' && module.exports
-    ? require('./film.js') : { DEF, newSettings, STOCKS, LOOKS, MASK_ADJ };
+    ? require('./film.js') : { DEF, newSettings, STOCKS, LOOKS, MASK_ADJ, SCANNERS, SCAN_RANGES };
   const api = factory(model);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.EmulsionRecipe = api;
@@ -4443,6 +4554,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = { DEF, new
       if (own(ranges, key)) { const [min, max, integer] = ranges[key]; out[key] = number(v, min, max, p, integer); }
       else if (['bw','flipH','flipV'].includes(key)) out[key] = boolean(v, p);
       else if (key === 'film') out[key] = choice(v, model.STOCKS.map(s => s.id), p);
+      else if (key === 'scan') out[key] = choice(v, model.SCANNERS.map(s => s.id), p);
+      else if (own(model.SCAN_RANGES, key)) {
+        const limits = model.SCAN_RANGES[key];
+        object(v, Object.keys(limits), p);
+        for (const k of Object.keys(v)) out[key][k] = number(v[k], limits[k][0], limits[k][1], p + '.' + k, true);
+      }
       else if (key === 'borderColor') out[key] = choice(v, ['white','cream','black'], p);
       else if (key === 'aspect') out[key] = choice(v, ['free','original','1:1','5:4','4:5','4:3','3:4','3:2','2:3','16:9','9:16','2:1','1:2'], p);
       else if (key === 'lut') {
@@ -4492,7 +4609,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = { DEF, new
     object(options, ['name','source','assets','output'], 'options');
     return validate({ format: 'emulsion-recipe', version: 1, settings: value, ...options });
   }
-  return Object.freeze({ validate, create, defaults: () => model.newSettings(), looks: () => ({ films: model.STOCKS.map(s => ({ id: s.id, name: s.name, group: s.group, description: s.desc })), looks: model.LOOKS.map(([name, settings]) => ({ name, settings: copy(settings) })) }) });
+  return Object.freeze({ validate, create, defaults: () => model.newSettings(), looks: () => ({ films: model.STOCKS.map(s => ({ id: s.id, name: s.name, group: s.group, description: s.desc })), scanners: model.SCANNERS.map(s => ({ id: s.id, name: s.name, description: s.desc })), looks: model.LOOKS.map(([name, settings]) => ({ name, settings: copy(settings) })) }) });
 });
 
 'use strict';
@@ -4807,6 +4924,40 @@ function buildPanels() {
     stockList.append(el('button', { type: 'button', class: 'chip', 'data-id': s.id, title: s.desc, onclick: () => pickStock(s) }, s.name));
   }
   WIDGETS.push(() => { $$('.chip', stockList).forEach(b => b.classList.toggle('on', b.dataset.id === st.S.film)); stockDesc.textContent = (STOCK_BY_ID[st.S.film] || FILM_NONE).desc; });
+  // --- Lab scanner: None, or one machine with its own controls ---
+  const scanSeg = el('div', { class: 'seg' }, SCANNERS.map(s => el('button', { type: 'button', 'data-id': s.id, title: s.desc, onclick: () => pickScanner(s) }, s.name)));
+  const scanDesc = el('p', { class: 'hint' });
+  const range = (id, k) => SCAN_RANGES[id][k];
+  const key = (id, label, k, o) => slider(label, id + '.' + k, range(id, k)[0], range(id, k)[1], 1, o);
+  const choice = (id, label, k, names) => {
+    const seg = el('div', { class: 'seg' }, names.map((n, i) => el('button', { type: 'button', 'data-v': i - 1, onclick: () => { if (!st.cur) return; st.S[id][k] = i - 1; requestRender(); commit(label + ' · ' + n); syncUI(); } }, n)));
+    WIDGETS.push(() => $$('button', seg).forEach(b => b.classList.toggle('on', +b.dataset.v === st.S[id][k])));
+    return el('div', { class: 'row' }, el('label', { text: label }), seg);
+  };
+  const keys = id => [
+    el('h4', { text: 'Density & colour keys' }),
+    key(id, 'Density', 'd', { commit: 'Density key' }), key(id, 'Cyan', 'c', { commit: 'Cyan key', track: 'cyan' }),
+    key(id, 'Magenta', 'm', { commit: 'Magenta key', track: 'tint' }), key(id, 'Yellow', 'y', { commit: 'Yellow key', track: 'temp' })];
+  const resetScan = s => btn('Reset ' + s.name, () => { if (!st.cur) return; st.S[s.id] = clone(DEF[s.id]); requestRender(); commit('Reset ' + s.name); syncUI(); }, 'tiny');
+  const TONES = ['Soft', 'Standard', 'Hard'];
+  const scanBox = {
+    frontier: el('div', { class: 'scanbox' }, ...keys('frontier'),
+      el('h4', { text: 'Tone adjustment' }), choice('frontier', 'Highlights', 'hiTone', TONES), choice('frontier', 'Shadows', 'shTone', TONES),
+      el('h4', { text: 'Hypertone' }), key('frontier', 'Highlights', 'hyperHi', { commit: 'Hypertone highlights' }), key('frontier', 'Shadows', 'hyperSh', { commit: 'Hypertone shadows' }),
+      el('p', { class: 'hint', text: 'Holds back large bright areas and opens large dark ones without flattening detail. 0 turns it off.' }),
+      el('h4', { text: 'Image' }), key('frontier', 'Saturation', 'sat'), key('frontier', 'Sharpness', 'sharp'), key('frontier', 'Suppress grain', 'grainSup', { commit: 'Grain suppression' }),
+      el('div', { class: 'rowline' }, resetScan(SCANNER_BY_ID.frontier))),
+    noritsu: el('div', { class: 'scanbox' }, ...keys('noritsu'),
+      el('h4', { text: 'Auto contrast' }), key('noritsu', 'Overall', 'acOverall', { commit: 'Auto contrast overall' }), key('noritsu', 'Shadows', 'acShadow', { commit: 'Auto contrast shadows' }), key('noritsu', 'Highlights', 'acHighlight', { commit: 'Auto contrast highlights' }),
+      el('p', { class: 'hint', text: 'Higher values correct more: a flatter curve overall, more open shadows, more highlight detail.' }),
+      el('h4', { text: 'Image' }), key('noritsu', 'Chroma', 'chroma'), key('noritsu', 'Sharpness', 'sharp', { commit: 'Auto sharpness' }), key('noritsu', 'Suppress grain', 'grainSup', { commit: 'Graininess suppression' }),
+      el('div', { class: 'rowline' }, resetScan(SCANNER_BY_ID.noritsu)))
+  };
+  WIDGETS.push(() => {
+    $$('button', scanSeg).forEach(b => b.classList.toggle('on', b.dataset.id === st.S.scan));
+    scanDesc.textContent = (SCANNER_BY_ID[st.S.scan] || SCANNERS[0]).desc;
+    for (const id in scanBox) scanBox[id].classList.toggle('hide', st.S.scan !== id);
+  });
   const borderSeg = el('div', { class: 'seg' }, ['white', 'cream', 'black'].map(c => el('button', { type: 'button', 'data-c': c, onclick: () => { st.S.borderColor = c; requestRender(); commit('Border colour'); syncUI(); } }, c[0].toUpperCase() + c.slice(1))));
   WIDGETS.push(() => $$('button', borderSeg).forEach(b => b.classList.toggle('on', b.dataset.c === st.S.borderColor)));
   const lutSel = el('select', { 'aria-label': 'LUT', onchange: () => { st.S.lut = lutSel.value || null; requestRender(); commit('LUT'); } });
@@ -4814,6 +4965,7 @@ function buildPanels() {
   const lutFile = el('input', { type: 'file', accept: '.cube', class: 'hide', onchange: async () => { const f = lutFile.files[0]; lutFile.value = ''; if (!f) return; try { const l = parseCube(await f.text()), name = f.name.replace(/\.cube$/i, ''); st.luts[name] = l; idb.set('kv', 'luts', st.luts); st.S.lut = name; requestRender(); commit('LUT ' + name); syncUI(); } catch (e) { toast(e.message, 'err'); } } });
   const film = el('div', { class: 'tabbody hide', id: 'tab-film' },
     section('Film stock', true, stockList, stockDesc, slider('Strength', 'filmAmt', 0, 100, 1, { commit: 'Film strength' })),
+    section('Lab scanner', true, scanSeg, scanDesc, scanBox.frontier, scanBox.noritsu),
     section('Halation', true, el('p', { class: 'hint', text: 'Red-orange glow where bright light scatters back through the film base.' }), slider('Amount', 'halation', 0, 100, 1, { commit: 'Halation' }), slider('Threshold', 'halThresh', 20, 100, 1, { commit: 'Halation threshold' }), slider('Radius', 'halRadius', 0, 100, 1, { commit: 'Halation radius' }), slider('Hue', 'halHue', -20, 60, 1, { commit: 'Halation hue', track: 'halhue' })),
     section('Bloom & mist', false, slider('Amount', 'bloom', 0, 100, 1, { commit: 'Bloom' }), slider('Threshold', 'bloomThresh', 0, 100, 1, { commit: 'Bloom threshold' }), slider('Radius', 'bloomRadius', 0, 100, 1, { commit: 'Bloom radius' }), el('p', { class: 'hint', text: 'Lower the threshold for an all-over diffusion filter.' })),
     section('Grain', true, slider('Amount', 'grain', 0, 100, 1, { commit: 'Grain' }), slider('Size', 'grainSize', 0, 100, 1, { commit: 'Grain size' }), slider('Roughness', 'grainRough', 0, 100, 1, { commit: 'Grain roughness' }), slider('Colour', 'grainColor', 0, 100, 1, { commit: 'Grain colour' })),
@@ -4857,8 +5009,10 @@ function pickStock(s) {
   requestRender(); commit('Film · ' + s.name); syncUI();
 }
 
+function pickScanner(s) { if (!st.cur) return; st.S.scan = s.id; requestRender(); commit('Scanner · ' + s.name); syncUI(); }
+
 /* ---------- left panel: looks, presets, history, info ---------- */
-const LOOK_KEEP = ['temp', 'tint', 'exposure', 'nrLuma', 'nrColor', 'distort', 'caR', 'caB', 'lensVig', 'masks', 'spots', ...GEO_KEYS];
+const LOOK_KEEP = ['temp', 'tint', 'exposure', 'nrLuma', 'nrColor', 'distort', 'caR', 'caB', 'lensVig', 'masks', 'spots', 'scan', 'frontier', 'noritsu', ...GEO_KEYS];
 function applyLook(name, patch, keepTone) {
   if (!st.cur) return; const S = st.S, keep = {};
   for (const k of LOOK_KEEP) keep[k] = S[k];
@@ -5520,7 +5674,7 @@ let finishEmulsionInit;
     return st.cur;
   }
   const snapshot = () => ({
-    app: 'Emulsion', version: '0.1.1',
+    app: 'Emulsion', version: '0.2.0',
     photos: st.photos.map(p => ({id:p.id,name:p.name,kind:p.kind,rating:p.rating,flag:p.flag})),
     current: st.cur ? {id:st.cur.id,name:st.cur.name,kind:st.cur.kind,loaded:st.srcFull,
       width:engine.src?.w ?? null,height:engine.src?.h ?? null} : null,

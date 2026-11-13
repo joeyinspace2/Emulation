@@ -17,6 +17,9 @@ const DEF = {
   fade: 0, leak: 0, leakSeed: 1, leakHue: 22, dust: 0, scratches: 0, fxSeed: 1,
   border: 0, borderRound: 0, borderColor: 'white',
   lut: null, lutAmt: 100,
+  scan: 'none',
+  frontier: { d: 0, c: 0, m: 0, y: 0, hiTone: 0, shTone: 0, hyperHi: 2, hyperSh: 2, sat: 0, sharp: 2, grainSup: 2 },
+  noritsu: { d: 0, c: 0, m: 0, y: 0, acOverall: 0, acShadow: 0, acHighlight: 0, chroma: 100, sharp: 4, grainSup: 10 },
   crop: { cx: 0.5, cy: 0.5, w: 1, h: 1 }, angle: 0, rot90: 0, flipH: false, flipV: false, aspect: 'free',
   masks: [], spots: []
 };
@@ -72,6 +75,57 @@ const STOCKS = [
 ];
 const STOCK_BY_ID = Object.fromEntries(STOCKS.map(s => [s.id, s]));
 
+/* ---------- lab scanners ----------
+   A minilab scanner is the second half of a film photograph: it lights the developed film, meters it,
+   and renders the positive with its own tone curve, colour response, dynamic-range compression and sharpening.
+   These are models of the published controls and the widely described character of each machine.
+   They are not measured profiles and are not affiliated with either manufacturer.
+
+   Both machines correct colour the way a darkroom printer does, by changing the exposure each colour
+   layer receives before the tone curve. One density key is 1/6 stop; one colour key is 1/12 stop. */
+const SCANNERS = [
+  { id: 'none', name: 'None', desc: 'No scanner stage: the standard rendering.' },
+  { id: 'frontier', name: 'Frontier SP-3000', desc: 'Fujifilm minilab scanner. Punchy contrast, deep blacks, cool cyan shadows, golden skin, crisp edges over smoothed grain.',
+    // Narrow-band red, green and blue LEDs give strong colour separation; reds lean yellow, greens lean cyan.
+    m: [1.04, -0.03, -0.01, -0.02, 1.04, -0.02, -0.035, 0.04, 0.995],
+    con: 1.08, black: 0.018, white: 0.965, knee: 0.97, shT: [-0.004, 0.001, 0.003], hlT: [0.003, 0.001, -0.004], sat: 1.05,
+    edge: [0.035, 0.11], floor: 0.12 },
+  { id: 'noritsu', name: 'Noritsu HS-1800', desc: 'Noritsu line-sensor scanner. Gentler contrast, open shadows and held highlights, neutral shadows, pinker skin, sharpening that keeps the grain.',
+    // Broader colour response: reds lean pink, greens lean yellow.
+    m: [1.0, 0.04, -0.04, -0.02, 1.02, 0, 0.02, -0.03, 1.01],
+    con: 0.95, black: -0.015, white: 0.99, knee: 0.9, shT: [0.001, 0, -0.001], hlT: [0.004, -0.002, 0], sat: 0.99,
+    edge: [0.015, 0.06], floor: 0.65 }
+];
+/* Each machine's own controls: [min, max]. All are whole steps, as on the machines. */
+const KEYS = { d: [-15, 15], c: [-15, 15], m: [-15, 15], y: [-15, 15] };
+const SCAN_RANGES = {
+  frontier: { ...KEYS, hiTone: [-1, 1], shTone: [-1, 1], hyperHi: [0, 4], hyperSh: [0, 4], sat: [-5, 5], sharp: [0, 5], grainSup: [0, 5] },
+  noritsu: { ...KEYS, acOverall: [-5, 5], acShadow: [-5, 5], acHighlight: [-5, 5], chroma: [0, 200], sharp: [0, 10], grainSup: [0, 50] }
+};
+const SCANNER_BY_ID = Object.fromEntries(SCANNERS.map(s => [s.id, s]));
+const TONE_STEP = [0.87, 1, 1.15]; // soft, standard, hard
+/* Settings -> the numbers the scan pass uses. null means no scanner stage. */
+function scanParams(S, mono) {
+  const sc = SCANNER_BY_ID[S.scan]; if (!sc || sc.id === 'none') return null;
+  const k = S[sc.id], zero = [0, 0, 0];
+  // + density prints darker; + cyan, magenta or yellow adds that colour by holding back red, green or blue.
+  const gain = [k.c, k.m, k.y].map(v => Math.pow(2, -(k.d / 6 + v / 12)));
+  const out = { id: sc.id, m: sc.m, gain, black: sc.black, white: sc.white, knee: sc.knee, shT: mono ? zero : sc.shT, hlT: mono ? zero : sc.hlT, edge: sc.edge, floor: sc.floor };
+  if (sc.id === 'frontier') {
+    // Tone adjustment (soft / standard / hard, separately for shadows and highlights) and Hypertone levels.
+    out.kS = sc.con * TONE_STEP[k.shTone + 1]; out.kH = sc.con * TONE_STEP[k.hiTone + 1];
+    out.hyS = k.hyperSh * 0.17; out.hyH = k.hyperHi * 0.08;
+    out.sat = sc.sat * (1 + k.sat * 0.05); out.sharp = k.sharp * 0.35; out.grainSup = k.grainSup * 0.18;
+  } else {
+    // Auto contrast: overall flattens the curve; shadow and highlight open or hold each end.
+    out.kS = out.kH = sc.con * (1 - 0.025 * k.acOverall);
+    out.hyS = Math.max(0, 0.3 + 0.07 * k.acShadow); out.hyH = Math.max(0, 0.14 + 0.07 * k.acHighlight);
+    out.sat = sc.sat * k.chroma / 100; out.sharp = k.sharp * 0.22; out.grainSup = k.grainSup / 50 * 0.9;
+  }
+  if (mono) out.m = I3;
+  return out;
+}
+
 /* ---------- built-in looks ---------- */
 const LOOKS = [
   ['Clean boost', { contrast: 12, vibrance: 18, clarity: 8, shadows: 10, highlights: -15, sharpen: 30 }],
@@ -105,4 +159,4 @@ function parseCube(text) {
 }
 
 /* Pure model access for the local recipe validator and agent CLI. */
-if (typeof module !== 'undefined' && module.exports) module.exports = { DEF, newSettings, STOCKS, LOOKS, MASK_ADJ };
+if (typeof module !== 'undefined' && module.exports) module.exports = { DEF, newSettings, STOCKS, LOOKS, MASK_ADJ, SCANNERS, SCAN_RANGES, scanParams };

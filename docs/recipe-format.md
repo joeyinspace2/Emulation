@@ -24,7 +24,7 @@ Recipes are plain JSON objects. They contain no executable code and never resolv
 - `validate(recipe)` returns a complete, independently copied recipe or throws a descriptive `Error` identifying the field.
 - `create(settings, options = {})` creates and validates a recipe. Options allow exactly `name`, `source`, `assets`, and `output` with the same shapes as recipe fields.
 - `defaults()` returns fresh complete editor settings.
-- `looks()` returns `{films:[{id,name,group,description}],looks:[{name,settings}]}`. Look settings are independent copies of the built-in partial presets.
+- `looks()` returns `{films:[{id,name,group,description}],scanners:[{id,name,description}],looks:[{name,settings}]}`. Look settings are independent copies of the built-in partial presets.
 
 Numbers must be finite JavaScript numbers; numeric strings are rejected. Unless explicitly marked integer, fractions within the bounds are supported, independent of slider step size. Bounds are inclusive.
 
@@ -45,6 +45,7 @@ Numbers must be finite JavaScript numbers; numeric strings are rejected. Unless 
 | `rot90` | Integer 0…3 |
 | `bw flipH flipV` | Boolean |
 | `film` | One of the IDs returned by `looks().films` |
+| `scan` | `none`, `frontier`, `noritsu` (see Lab scanner) |
 | `borderColor` | `white`, `cream`, `black` |
 | `aspect` | `free`, `original`, `1:1`, `5:4`, `4:5`, `4:3`, `3:4`, `3:2`, `2:3`, `16:9`, `9:16`, `2:1`, `1:2` |
 | `lut` | `null` or the embedded selected LUT name |
@@ -56,6 +57,39 @@ Numbers must be finite JavaScript numbers; numeric strings are rejected. Unless 
 `curve` accepts channels `rgb`, `r`, `g`, and `b`. Each channel is an array of 2…14 `[x,y]` pairs. Both coordinates are in 0…1; x values increase strictly, beginning at 0 and ending at 1. Missing channels default to `[[0,0],[1,1]]`.
 
 `crop` accepts `cx`, `cy`, `w`, and `h`. Centers are 0…1 and dimensions are 0.000001…1 (the lower bound keeps affine transforms finite). The default is `{cx:0.5,cy:0.5,w:1,h:1}`. A source-independent recipe cannot check rotated crop corners against a particular photograph's aspect ratio.
+
+## Lab scanner
+
+`scan` chooses the machine that scans the film: `none` (the standard rendering), `frontier` (Fujifilm Frontier SP-3000) or `noritsu` (Noritsu HS-1800). The scanner reads the finished film frame, including grain, halation and dust, and draws the print border afterwards. Each machine has its own object of whole-number controls; both objects are always stored, and only the selected machine's is used. Omitted controls keep their defaults.
+
+Both machines share the lab keys. One density step is 1/6 stop and one colour step is 1/12 stop, applied to the light before the machine's tone curve.
+
+| Keys (both machines) | Range | Effect |
+| --- | --- | --- |
+| `d` | −15…15 | Density. Positive prints darker. |
+| `c` `m` `y` | −15…15 | Positive adds cyan, magenta or yellow by holding back red, green or blue. |
+
+| `frontier` | Range | Default | Effect |
+| --- | --- | --- | --- |
+| `hiTone` `shTone` | −1, 0, 1 | 0 | Tone adjustment for highlights and shadows: soft, standard, hard. |
+| `hyperHi` `hyperSh` | 0…4 | 2 | Hypertone level: holds large bright areas, opens large dark areas. 0 is off. |
+| `sat` | −5…5 | 0 | Saturation steps. |
+| `sharp` | 0…5 | 2 | Sharpness on edges. |
+| `grainSup` | 0…5 | 2 | Grain suppression in flat areas. |
+
+| `noritsu` | Range | Default | Effect |
+| --- | --- | --- | --- |
+| `acOverall` | −5…5 | 0 | Auto contrast. Positive flattens the curve. |
+| `acShadow` `acHighlight` | −5…5 | 0 | Positive opens shadows or holds highlights more. |
+| `chroma` | 0…200 | 100 | Colour saturation in percent. |
+| `sharp` | 0…10 | 4 | Auto sharpness. It also sharpens grain. |
+| `grainSup` | 0…50 | 10 | Graininess suppression. |
+
+```json
+{"film":"port400","scan":"frontier","frontier":{"d":-1,"y":2,"shTone":-1}}
+```
+
+The scanners are models built from each machine's published controls and commonly described character. They are not measured profiles, and the automatic per-frame density and colour balance of the real machines is not simulated: set white balance and exposure in the develop settings. `looks().scanners` lists the IDs.
 
 ## Masks and heal spots
 

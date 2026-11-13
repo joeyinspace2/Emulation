@@ -1,4 +1,6 @@
-Emulsion 0.1.1 lets a coding agent edit with you in the same editor.
+Emulsion 0.2.0 adds lab scanners and lets a coding agent edit with you in the same editor.
+
+- **Lab scanner** in the Film tab: None, Frontier SP-3000 or Noritsu HS-1800. Each machine has its own panel with density and colour keys and its own tone, contrast, saturation, sharpening and grain controls. Recipes carry the choice as `scan` with a `frontier` or `noritsu` object.
 
 - `emulsion preview <photo> --recipe <file>` opens the editor on that photo with the recipe applied. Saving the recipe file updates the open editor, and edits made in the editor are saved back to the file.
 - The skill now opens this live editor in the app's built-in browser before the first edit, every time, so you can adjust the result whenever you want.

@@ -1,0 +1,63 @@
+name: Verify and release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm test
+      - run: npm run test:browser
+      - run: npm run package:release
+      - name: Check committed distributions
+        run: |
+          git diff --exit-code -- Emulsion.html downloads/
+          test -z "$(git status --porcelain -- Emulsion.html downloads/)"
+          cd downloads
+          sha256sum -c SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: emulsion-release
+          path: |
+            Emulsion.html
+            downloads/emulsion-plugin-*.zip
+            downloads/SHA256SUMS
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node -e 'if (process.env.RELEASE_TAG !== "v" + require("./package.json").version) process.exit(1)'
+      - name: Publish verified files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p release
+          cp Emulsion.html "downloads/emulsion-plugin-$RELEASE_TAG.zip" release/
+          cd release
+          sha256sum Emulsion.html "emulsion-plugin-$RELEASE_TAG.zip" > SHA256SUMS
+          gh release create "$RELEASE_TAG" ./* --verify-tag --title "Emulsion $RELEASE_TAG" --notes-file ../docs/release-notes.md

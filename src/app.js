@@ -309,7 +309,7 @@ function setBusy(msg) { const b = $('#busy'); b.textContent = msg || ''; b.class
 async function openPhoto(p) {
   showModule('develop');
   if (st.cur === p && engine.src) { requestRender(); return; }
-  st.cur = p; st.S = p.settings ? p.settings : newSettings();
+  st.cur = p; p.loadError = null; st.S = p.settings ? p.settings : newSettings();
   if (!p.hist) { p.hist = [{ label: 'Opened', j: JSON.stringify(st.S) }]; p.hi = 0; }
   st.selMask = -1; st.selSpot = -1; st.view.fit = true; st.compare = 0; st.srcFull = false; setTool('none');
   engine.setSource(null); for (const id of [...maskRT.keys()]) { maskRT.delete(id); engine.dropMask(id); }
@@ -326,7 +326,7 @@ async function openPhoto(p) {
     const spec = await loadSourceSpec(p, engine.maxTex);
     if (token !== st.loadToken) { if (spec.bitmap) spec.bitmap.close(); return; }
     engine.setSource(engine.makeSource(spec)); if (spec.bitmap) spec.bitmap.close(); p.meta = spec.meta; st.srcFull = true; ready(); setBusy(null);
-  } catch (e) { if (token === st.loadToken) { setBusy(null); toast('Could not open ' + p.name + ': ' + (e.message || e), 'err'); console.error(e); } }
+  } catch (e) { if (token === st.loadToken) { p.loadError = e.message || String(e); setBusy(null); toast('Could not open ' + p.name + ': ' + p.loadError, 'err'); console.error(e); } }
 }
 function step(d) { if (!st.cur) return; const i = st.list.indexOf(st.cur), n = st.list[i + d]; if (n) openPhoto(n); }
 
@@ -571,7 +571,7 @@ function syncChrome() { $$('[data-act=before]').forEach(b => b.classList.toggle(
 
 async function init() {
   glc = $('#gl'); ov = $('#ov'); octx = ov.getContext('2d'); stage = $('#stage');
-  try { engine = new Engine(glc); } catch (e) { $('#fatal').textContent = e.message + ' Emulsion needs a recent version of Chrome, Edge, Safari or Firefox with graphics acceleration turned on.'; $('#fatal').classList.remove('hide'); return; }
+  try { engine = new Engine(glc); } catch (e) { $('#fatal').textContent = e.message + ' Emulsion needs a recent version of Chrome, Edge, Safari or Firefox with graphics acceleration turned on.'; $('#fatal').classList.remove('hide'); throw e; }
   glc.addEventListener('webglcontextlost', e => { e.preventDefault(); toast('The graphics card ran out of memory. Reload the page to continue; your edits are saved.', 'err'); });
   buildPanels(); bindUI(); bindStage();
   st.presets = (await idb.get('kv', 'presets')) || []; st.luts = (await idb.get('kv', 'luts')) || {};
@@ -585,4 +585,4 @@ async function init() {
   const demo = new URLSearchParams(location.search).get('demo'); // developer aid: ?demo=a.jpg,b.arw loads files served next to the page
   if (demo) addLoose(demo.split(',').map(u => ({ id: u.split('/').pop(), name: u.split('/').pop(), folder: '', kind: kindOf(u) || 'img', getFile: async () => new File([await (await fetch(u)).blob()], u.split('/').pop()) })), 'Demo');
 }
-window.addEventListener('DOMContentLoaded', init);
+window.addEventListener('DOMContentLoaded', () => init().then(() => finishEmulsionInit(), finishEmulsionInit));

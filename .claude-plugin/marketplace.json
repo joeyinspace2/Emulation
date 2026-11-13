@@ -1,0 +1,6 @@
+{
+  "name": "emulsion",
+  "owner": {"name": "Joey Pedras"},
+  "metadata": {"description": "Emulsion photo editing tools and recipes for AI agents"},
+  "plugins": [{"name":"emulsion","source":"./","description":"Photo editing with portable recipes and a browser renderer","version":"0.1.0"}]
+}

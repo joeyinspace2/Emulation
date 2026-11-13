@@ -132,6 +132,8 @@ class Engine {
     const gl = this.gl; let tex, w, h;
     if (spec.kind === 'raw') {
       w = spec.w; h = spec.h;
+      if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1 || w > this.maxTex || h > this.maxTex) throw new Error('Decoded RAW dimensions exceed this browser GPU limit (' + this.maxTex + ' px per edge).');
+      if (!(spec.data instanceof Uint16Array) || spec.data.length < w * h * 3) throw new Error('Decoded RAW pixels are incomplete.');
       const it = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, it);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB16UI, w, h, 0, gl.RGB_INTEGER, gl.UNSIGNED_SHORT, spec.data);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -148,6 +150,8 @@ class Engine {
     }
     gl.bindTexture(gl.TEXTURE_2D, tex); gl.generateMipmap(gl.TEXTURE_2D);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    const uploadError = gl.getError();
+    if (uploadError !== gl.NO_ERROR) { gl.deleteTexture(tex); throw new Error('GPU image upload failed (WebGL ' + uploadError + '). Try a smaller photo or reload the editor.'); }
     return { tex, w, h, gain: spec.gain || 1, base: spec.kind === 'raw' ? 1 : 0, id: ++this.srcN };
   }
   freeSource(s) { if (s) this.gl.deleteTexture(s.tex); }
@@ -190,7 +194,7 @@ class Engine {
     const src = this.src; if (!src) return null;
     const g = geoInfo(S, src.w, src.h, o.uncropped);
     const cap = Math.min(1, this.maxTex / Math.max(g.outW, g.outH)); scale = Math.min(scale, cap);
-    const W = Math.max(8, Math.round(g.outW * scale)), H = Math.max(8, Math.round(g.outH * scale)), long = Math.max(W, H);
+    const W = Math.max(1, Math.round(g.outW * scale)), H = Math.max(1, Math.round(g.outH * scale)), long = Math.max(W, H);
     const film = o.film || FILM_NONE;
     // 1. geometry, lens, healing
     const spots = (S.spots || []).slice(0, 16), sp = new Float32Array(64), ss = new Float32Array(64);
@@ -285,9 +289,10 @@ class Engine {
   /* linear scene values straight after geometry: used for the WB picker and auto tone */
   sampleG(u, v) {
     const r = this.last; if (!r) return null; const gl = this.gl;
-    const x = Math.max(0, Math.min(r.W - 5, Math.round(u * r.W) - 2)), y = Math.max(0, Math.min(r.H - 5, Math.round(v * r.H) - 2));
-    gl.bindFramebuffer(gl.FRAMEBUFFER, r.G.fb); const px = new Float32Array(100); gl.readPixels(x, y, 5, 5, gl.RGBA, gl.FLOAT, px);
-    const c = [0, 0, 0]; for (let i = 0; i < 100; i += 4) { c[0] += px[i]; c[1] += px[i + 1]; c[2] += px[i + 2]; } return c.map(v => v / 25);
+    const w = Math.min(5, r.W), h = Math.min(5, r.H);
+    const x = Math.max(0, Math.min(r.W - w, Math.round(u * r.W) - Math.floor(w / 2))), y = Math.max(0, Math.min(r.H - h, Math.round(v * r.H) - Math.floor(h / 2)));
+    gl.bindFramebuffer(gl.FRAMEBUFFER, r.G.fb); const px = new Float32Array(w * h * 4); gl.readPixels(x, y, w, h, gl.RGBA, gl.FLOAT, px);
+    const c = [0, 0, 0]; for (let i = 0; i < px.length; i += 4) { c[0] += px[i]; c[1] += px[i + 1]; c[2] += px[i + 2]; } return c.map(v => v / (w * h));
   }
   statsG() {
     const r = this.last; if (!r) return null; const gl = this.gl, t = this.rt('st', 96, 96, 'f16');
@@ -303,6 +308,8 @@ class Engine {
       const g = geoInfo(S, this.src.w, this.src.h), long = Math.max(g.outW, g.outH);
       const r = this.render(S, maxLong ? Math.min(1, maxLong / long) : 1, o), gl = this.gl;
       const px = new Uint8ClampedArray(r.W * r.H * 4); gl.bindFramebuffer(gl.FRAMEBUFFER, r.F.fb); gl.readPixels(0, 0, r.W, r.H, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      const renderError = gl.getError();
+      if (renderError !== gl.NO_ERROR) throw new Error('GPU export failed (WebGL ' + renderError + '). Try a smaller export size.');
       for (let i = 3; i < px.length; i += 4) px[i] = 255;
       return { px, W: r.W, H: r.H };
     } finally { if (srcOverride) { this.src = keep; this.invalidate(); } }

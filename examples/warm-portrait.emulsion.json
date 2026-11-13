@@ -1,0 +1,16 @@
+{
+  "format": "emulsion-recipe",
+  "version": 1,
+  "name": "Warm portrait",
+  "settings": {
+    "film": "port400",
+    "filmAmt": 65,
+    "exposure": 0.4,
+    "shadows": 12,
+    "highlights": -15,
+    "grain": 15,
+    "grainSize": 32,
+    "halation": 8
+  },
+  "output": {"type":"image/jpeg","quality":0.92,"max":0}
+}

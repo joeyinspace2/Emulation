@@ -1,0 +1,46 @@
+{
+  "name": "@joeyinspace2/emulsion",
+  "version": "0.1.0",
+  "description": "Browser photo development, editable recipes, and tools for AI agents",
+  "type": "commonjs",
+  "bin": {
+    "emulsion": "bin/emulsion.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node build/build.mjs",
+    "test": "node --test tests/*.test.cjs tests/*.test.mjs",
+    "test:browser": "node --test tests/browser.mjs",
+    "preview": "node bin/emulsion.mjs preview",
+    "package:plugin": "node scripts/package-plugin.mjs",
+    "package:release": "npm run package:plugin && node scripts/package-release.mjs"
+  },
+  "dependencies": {
+    "libraw-wasm": "1.6.0",
+    "playwright": "1.65.0"
+  },
+  "files": [
+    "Emulsion.html",
+    "src/film.js",
+    "src/recipe.js",
+    "bin/",
+    "lib/",
+    "examples/",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "third_party/",
+    "docs/recipe-format.md",
+    "docs/raw-decoder-build.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joeyinspace2/Emulation.git"
+  },
+  "devDependencies": {
+    "fflate": "0.8.2"
+  },
+  "license": "ISC"
+}

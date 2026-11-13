@@ -1,0 +1,6 @@
+* text=auto eol=lf
+# Preserve original license bytes and generated distribution checksums.
+third_party/licenses/* -text -whitespace
+third_party/sources/*.tar.gz binary
+downloads/*.zip binary
+Emulsion.html -text -whitespace

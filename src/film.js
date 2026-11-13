@@ -103,3 +103,6 @@ function parseCube(text) {
   if (!size || vals.length !== size * size * size * 3) throw new Error('Not a valid 3D .cube LUT.');
   return { size, data: new Float32Array(vals) };
 }
+
+/* Pure model access for the local recipe validator and agent CLI. */
+if (typeof module !== 'undefined' && module.exports) module.exports = { DEF, newSettings, STOCKS, LOOKS, MASK_ADJ };

@@ -1,0 +1,27 @@
+{
+  "name": "emulsion",
+  "version": "0.1.0",
+  "description": "Develop photos in the browser with editable recipes, film looks, and local rendering tools.",
+  "author": {
+    "name": "Joey Pedras"
+  },
+  "repository": "https://github.com/joeyinspace2/Emulation",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Emulsion",
+    "shortDescription": "Photos, recipes, and a browser darkroom",
+    "longDescription": "Inspect photos, create editable photo recipes, preview film looks and export JPEG, PNG or WebP using the same renderer as the Emulsion browser editor.",
+    "developerName": "Joey Pedras",
+    "category": "Creativity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Give this portrait a warm film look",
+      "Create a reusable photo recipe",
+      "Export this edit as a JPEG"
+    ]
+  },
+  "license": "ISC"
+}

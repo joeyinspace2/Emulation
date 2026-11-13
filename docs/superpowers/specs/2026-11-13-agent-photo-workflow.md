@@ -1,0 +1,21 @@
+# Emulsion: browser photo recipes and agent tools
+
+Approved direction: a Remotion/HyperFrames-style photo framework built around the existing browser renderer, editable recipes, a browser studio and portable agent skills. The user chose browser processing with the editor open. This implementation includes a local CLI for coding agents as an optional execution route; it runs the same renderer in Chromium on the machine holding the photographs. No hosted processing or live remote relay is required or implied.
+
+## Contract
+- Keep the current single-file Emulsion.html distribution and existing editing features.
+- Recipes are JSON: `{format:"emulsion-recipe",version:1,name?:string,source?:{name:string},settings:object,assets?:{lut:{name:string,size:number,data:number[]}},output?:{type:"image/jpeg"|"image/png"|"image/webp",quality:number,max:number}}`.
+- Settings use existing editor keys. Missing keys mean documented defaults, not retain current state. Recipe application replaces adjustments as one undoable history entry. Export captures all adjustments, embedded brush masks and the selected LUT. Source name is informational; recipes can be applied to another selected photo and cannot fetch files.
+- Validate all keys and values before changing editor state. Reject unknown versions/keys, invalid numbers, malformed geometry/curves/masks/LUTs, duplicate mask IDs and external mask URLs. Limits must be documented. No code is executable inside recipes.
+- Browser API `window.Emulsion`: `ready`, `inspect()`, `listLooks()`, `validateRecipe(recipe)`, `openFiles(files)`, `selectPhoto(id)`, `applyRecipe(recipe)`, `getRecipe()`, `render(options)`, `undo()`, `redo()`. Async methods reject on failure. `render` returns `{blob,width,height}`. Source failures and partial RAW previews cannot be reported as successful full-resolution renders.
+- API readiness resolves after UI and storage initialize. Agent operations are serialized. Export and recipe application await brush asset decoding and use the same engine as the editor.
+- Browser UI: a Recipes dialog with import file, editable JSON, validate/apply, save recipe, status feedback. Export recipes reflect slider changes. Controls are accessible by name and preserve original-photo handling.
+- CLI commands: `help`, `looks`, `validate <recipe>`, `inspect <image>`, `render <image> --recipe <file> --output <file> [--max <pixels>]`, `preview [--port <port>]`. Machine-readable JSON on stdout, useful failures on stderr, nonzero failure status. Render never overwrites the source or an existing output without explicit `--overwrite`. Explicit file arguments are the only files read. Preview serves only the compiled app, on loopback. No remote uploads.
+- Root npm scripts install, build, unit test, browser integration test, and package an upload-ready plugin ZIP. Browser rendering supports installed Playwright Chromium or EMULSION_BROWSER pointing to a system browser. Software WebGL fallback is explicit for CI/headless machines.
+- Portable Emulsion skill plus Codex/Claude manifests. A self-contained plugin ZIP includes the renderer, CLI, runtime manifest/lock and instructions. Package is built and validated locally, not published to a marketplace or npm. Ordinary chat clients can exchange recipe files; automatic remote control is a separate integration.
+
+## Evidence required
+Node validation tests cover full/partial recipes, dangerous input, portable masks/LUTs, invalid outputs, and no mutation. Browser tests cover offline-after-load import, apply, slider synchronization, one-step undo/redo, recipe round-trip, mask/LUT assets, identical same-environment PNG render output, changed brightness, dimensions, invalid input atomicity, and a real RAW fixture when available. CLI tests exercise actual inspect/render output and refusal to overwrite. Plugin packaging tests inspect archive structure and run the included launcher. Agent reference testing verifies the skill teaches supported commands and the actual recipe contract.
+
+## Boundaries
+Same settings and seed reproduce the rendering process; exact pixels across different GPUs/browsers are not promised. Source photos are not embedded in recipes. RAW format support follows LibRaw and hardware limits. No accounts, billing, hosted connector, or marketplace publication in this implementation.

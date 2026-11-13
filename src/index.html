@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Emulsion</title>
+<!-- Third-party notices and corresponding-source links travel with this file. -->
+<script type="text/plain" id="emulsion-licenses">/*LICENSES*/</script>
 <style>
 /*CSS*/
 </style>
@@ -34,6 +36,7 @@
   </div>
   <div class="hright">
     <span id="saveState" class="dimtxt"></span>
+    <button type="button" id="recipeOpen">Recipes</button>
     <button type="button" data-act="open" title="Open a folder of photos as your library">Open folder</button>
     <button type="button" data-act="add" title="Add individual photos">Add photos</button>
     <button type="button" data-act="export" class="primary" title="Export (Cmd/Ctrl+E)">Export</button>
@@ -128,6 +131,24 @@
     <div class="dlgbtns"><button type="button" id="exCancel">Cancel</button><button type="submit" class="primary">Export</button></div>
   </form>
 </dialog>
+<dialog id="recipeDlg" aria-labelledby="recipeTitle">
+  <h2 id="recipeTitle">Photo recipes</h2>
+  <p class="hint">Save your edits as a recipe, or apply one made by an assistant. Photos stay on this device. Applying a recipe replaces the current edits and can be undone.</p>
+  <div class="recipe-actions">
+    <button type="button" id="recipeCurrent">Use current edits</button>
+    <button type="button" id="recipeImport">Import recipe…</button>
+    <button type="button" id="recipeSave">Save recipe</button>
+  </div>
+  <label for="recipeJson">Photo recipe JSON</label>
+  <textarea id="recipeJson" spellcheck="false"></textarea>
+  <p id="recipeStatus" role="status" aria-live="polite"></p>
+  <div class="dlgbtns">
+    <button type="button" id="recipeClose">Close</button>
+    <button type="button" id="recipeValidate">Validate recipe</button>
+    <button type="button" class="primary" id="recipeApply">Apply recipe</button>
+  </div>
+</dialog>
+<input id="recipeFile" class="hide" type="file" accept=".json,application/json">
 <div id="exportProg" class="hide" role="status"></div>
 <div id="dropveil">Drop photos or a folder to open them</div>
 <div id="fatal" class="hide"></div>

@@ -3,7 +3,7 @@
    concatenate this file with film.js and the rest of the editor. */
 (function (root, factory) {
   const model = typeof module !== 'undefined' && module.exports
-    ? require('./film.js') : { DEF, newSettings, STOCKS, LOOKS, MASK_ADJ };
+    ? require('./film.js') : { DEF, newSettings, STOCKS, LOOKS, MASK_ADJ, SCANNERS, SCAN_RANGES };
   const api = factory(model);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.EmulsionRecipe = api;
@@ -162,6 +162,12 @@
       if (own(ranges, key)) { const [min, max, integer] = ranges[key]; out[key] = number(v, min, max, p, integer); }
       else if (['bw','flipH','flipV'].includes(key)) out[key] = boolean(v, p);
       else if (key === 'film') out[key] = choice(v, model.STOCKS.map(s => s.id), p);
+      else if (key === 'scan') out[key] = choice(v, model.SCANNERS.map(s => s.id), p);
+      else if (own(model.SCAN_RANGES, key)) {
+        const limits = model.SCAN_RANGES[key];
+        object(v, Object.keys(limits), p);
+        for (const k of Object.keys(v)) out[key][k] = number(v[k], limits[k][0], limits[k][1], p + '.' + k, true);
+      }
       else if (key === 'borderColor') out[key] = choice(v, ['white','cream','black'], p);
       else if (key === 'aspect') out[key] = choice(v, ['free','original','1:1','5:4','4:5','4:3','3:4','3:2','2:3','16:9','9:16','2:1','1:2'], p);
       else if (key === 'lut') {
@@ -211,5 +217,5 @@
     object(options, ['name','source','assets','output'], 'options');
     return validate({ format: 'emulsion-recipe', version: 1, settings: value, ...options });
   }
-  return Object.freeze({ validate, create, defaults: () => model.newSettings(), looks: () => ({ films: model.STOCKS.map(s => ({ id: s.id, name: s.name, group: s.group, description: s.desc })), looks: model.LOOKS.map(([name, settings]) => ({ name, settings: copy(settings) })) }) });
+  return Object.freeze({ validate, create, defaults: () => model.newSettings(), looks: () => ({ films: model.STOCKS.map(s => ({ id: s.id, name: s.name, group: s.group, description: s.desc })), scanners: model.SCANNERS.map(s => ({ id: s.id, name: s.name, description: s.desc })), looks: model.LOOKS.map(([name, settings]) => ({ name, settings: copy(settings) })) }) });
 });

@@ -134,6 +134,40 @@ function buildPanels() {
     stockList.append(el('button', { type: 'button', class: 'chip', 'data-id': s.id, title: s.desc, onclick: () => pickStock(s) }, s.name));
   }
   WIDGETS.push(() => { $$('.chip', stockList).forEach(b => b.classList.toggle('on', b.dataset.id === st.S.film)); stockDesc.textContent = (STOCK_BY_ID[st.S.film] || FILM_NONE).desc; });
+  // --- Lab scanner: None, or one machine with its own controls ---
+  const scanSeg = el('div', { class: 'seg' }, SCANNERS.map(s => el('button', { type: 'button', 'data-id': s.id, title: s.desc, onclick: () => pickScanner(s) }, s.name)));
+  const scanDesc = el('p', { class: 'hint' });
+  const range = (id, k) => SCAN_RANGES[id][k];
+  const key = (id, label, k, o) => slider(label, id + '.' + k, range(id, k)[0], range(id, k)[1], 1, o);
+  const choice = (id, label, k, names) => {
+    const seg = el('div', { class: 'seg' }, names.map((n, i) => el('button', { type: 'button', 'data-v': i - 1, onclick: () => { if (!st.cur) return; st.S[id][k] = i - 1; requestRender(); commit(label + ' · ' + n); syncUI(); } }, n)));
+    WIDGETS.push(() => $$('button', seg).forEach(b => b.classList.toggle('on', +b.dataset.v === st.S[id][k])));
+    return el('div', { class: 'row' }, el('label', { text: label }), seg);
+  };
+  const keys = id => [
+    el('h4', { text: 'Density & colour keys' }),
+    key(id, 'Density', 'd', { commit: 'Density key' }), key(id, 'Cyan', 'c', { commit: 'Cyan key', track: 'cyan' }),
+    key(id, 'Magenta', 'm', { commit: 'Magenta key', track: 'tint' }), key(id, 'Yellow', 'y', { commit: 'Yellow key', track: 'temp' })];
+  const resetScan = s => btn('Reset ' + s.name, () => { if (!st.cur) return; st.S[s.id] = clone(DEF[s.id]); requestRender(); commit('Reset ' + s.name); syncUI(); }, 'tiny');
+  const TONES = ['Soft', 'Standard', 'Hard'];
+  const scanBox = {
+    frontier: el('div', { class: 'scanbox' }, ...keys('frontier'),
+      el('h4', { text: 'Tone adjustment' }), choice('frontier', 'Highlights', 'hiTone', TONES), choice('frontier', 'Shadows', 'shTone', TONES),
+      el('h4', { text: 'Hypertone' }), key('frontier', 'Highlights', 'hyperHi', { commit: 'Hypertone highlights' }), key('frontier', 'Shadows', 'hyperSh', { commit: 'Hypertone shadows' }),
+      el('p', { class: 'hint', text: 'Holds back large bright areas and opens large dark ones without flattening detail. 0 turns it off.' }),
+      el('h4', { text: 'Image' }), key('frontier', 'Saturation', 'sat'), key('frontier', 'Sharpness', 'sharp'), key('frontier', 'Suppress grain', 'grainSup', { commit: 'Grain suppression' }),
+      el('div', { class: 'rowline' }, resetScan(SCANNER_BY_ID.frontier))),
+    noritsu: el('div', { class: 'scanbox' }, ...keys('noritsu'),
+      el('h4', { text: 'Auto contrast' }), key('noritsu', 'Overall', 'acOverall', { commit: 'Auto contrast overall' }), key('noritsu', 'Shadows', 'acShadow', { commit: 'Auto contrast shadows' }), key('noritsu', 'Highlights', 'acHighlight', { commit: 'Auto contrast highlights' }),
+      el('p', { class: 'hint', text: 'Higher values correct more: a flatter curve overall, more open shadows, more highlight detail.' }),
+      el('h4', { text: 'Image' }), key('noritsu', 'Chroma', 'chroma'), key('noritsu', 'Sharpness', 'sharp', { commit: 'Auto sharpness' }), key('noritsu', 'Suppress grain', 'grainSup', { commit: 'Graininess suppression' }),
+      el('div', { class: 'rowline' }, resetScan(SCANNER_BY_ID.noritsu)))
+  };
+  WIDGETS.push(() => {
+    $$('button', scanSeg).forEach(b => b.classList.toggle('on', b.dataset.id === st.S.scan));
+    scanDesc.textContent = (SCANNER_BY_ID[st.S.scan] || SCANNERS[0]).desc;
+    for (const id in scanBox) scanBox[id].classList.toggle('hide', st.S.scan !== id);
+  });
   const borderSeg = el('div', { class: 'seg' }, ['white', 'cream', 'black'].map(c => el('button', { type: 'button', 'data-c': c, onclick: () => { st.S.borderColor = c; requestRender(); commit('Border colour'); syncUI(); } }, c[0].toUpperCase() + c.slice(1))));
   WIDGETS.push(() => $$('button', borderSeg).forEach(b => b.classList.toggle('on', b.dataset.c === st.S.borderColor)));
   const lutSel = el('select', { 'aria-label': 'LUT', onchange: () => { st.S.lut = lutSel.value || null; requestRender(); commit('LUT'); } });
@@ -141,6 +175,7 @@ function buildPanels() {
   const lutFile = el('input', { type: 'file', accept: '.cube', class: 'hide', onchange: async () => { const f = lutFile.files[0]; lutFile.value = ''; if (!f) return; try { const l = parseCube(await f.text()), name = f.name.replace(/\.cube$/i, ''); st.luts[name] = l; idb.set('kv', 'luts', st.luts); st.S.lut = name; requestRender(); commit('LUT ' + name); syncUI(); } catch (e) { toast(e.message, 'err'); } } });
   const film = el('div', { class: 'tabbody hide', id: 'tab-film' },
     section('Film stock', true, stockList, stockDesc, slider('Strength', 'filmAmt', 0, 100, 1, { commit: 'Film strength' })),
+    section('Lab scanner', true, scanSeg, scanDesc, scanBox.frontier, scanBox.noritsu),
     section('Halation', true, el('p', { class: 'hint', text: 'Red-orange glow where bright light scatters back through the film base.' }), slider('Amount', 'halation', 0, 100, 1, { commit: 'Halation' }), slider('Threshold', 'halThresh', 20, 100, 1, { commit: 'Halation threshold' }), slider('Radius', 'halRadius', 0, 100, 1, { commit: 'Halation radius' }), slider('Hue', 'halHue', -20, 60, 1, { commit: 'Halation hue', track: 'halhue' })),
     section('Bloom & mist', false, slider('Amount', 'bloom', 0, 100, 1, { commit: 'Bloom' }), slider('Threshold', 'bloomThresh', 0, 100, 1, { commit: 'Bloom threshold' }), slider('Radius', 'bloomRadius', 0, 100, 1, { commit: 'Bloom radius' }), el('p', { class: 'hint', text: 'Lower the threshold for an all-over diffusion filter.' })),
     section('Grain', true, slider('Amount', 'grain', 0, 100, 1, { commit: 'Grain' }), slider('Size', 'grainSize', 0, 100, 1, { commit: 'Grain size' }), slider('Roughness', 'grainRough', 0, 100, 1, { commit: 'Grain roughness' }), slider('Colour', 'grainColor', 0, 100, 1, { commit: 'Grain colour' })),
@@ -184,8 +219,10 @@ function pickStock(s) {
   requestRender(); commit('Film · ' + s.name); syncUI();
 }
 
+function pickScanner(s) { if (!st.cur) return; st.S.scan = s.id; requestRender(); commit('Scanner · ' + s.name); syncUI(); }
+
 /* ---------- left panel: looks, presets, history, info ---------- */
-const LOOK_KEEP = ['temp', 'tint', 'exposure', 'nrLuma', 'nrColor', 'distort', 'caR', 'caB', 'lensVig', 'masks', 'spots', ...GEO_KEYS];
+const LOOK_KEEP = ['temp', 'tint', 'exposure', 'nrLuma', 'nrColor', 'distort', 'caR', 'caB', 'lensVig', 'masks', 'spots', 'scan', 'frontier', 'noritsu', ...GEO_KEYS];
 function applyLook(name, patch, keepTone) {
   if (!st.cur) return; const S = st.S, keep = {};
   for (const k of LOOK_KEEP) keep[k] = S[k];

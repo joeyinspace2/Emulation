@@ -259,18 +259,29 @@ class Engine {
     }
     // 5. film, finishing
     const lutTex = S.lut && o.lut ? this.setLut(S.lut, o.lut) : null;
-    const F = this.rt('F', W, H, 'u8');
+    const scan = scanParams(S, !!film.mono || S.bw);
+    const border = { u_border: o.uncropped ? 0 : S.border / 100 * 0.18, u_borderRound: S.borderRound / 100, u_borderCol: S.borderColor === 'black' ? [0.02, 0.02, 0.02] : S.borderColor === 'cream' ? [0.96, 0.94, 0.88] : [1, 1, 1], u_full: [g.outW, g.outH] };
+    // With a scanner, the film frame is finished at full precision and the scan pass makes the final image.
+    const F = this.rt('F', W, H, 'u8'), filmOut = scan ? this.rt('Fs', W, H, 'f16') : F;
     const ht = hsv2rgb(((S.halHue % 360) + 360) % 360 / 360, 0.85, 1);
-    this.draw(F, 'finish', {
+    this.draw(filmOut, 'finish', {
       u_a: A.tex, u_h1: h1, u_h2: h2, u_bm: bm, u_lut: lutTex, u_lutAmt: lutTex ? S.lutAmt / 100 : 0,
       u_halTint: ht, u_halAmt: h1 ? S.halation / 100 * 1.6 : 0, u_bloomAmt: bm ? S.bloom / 100 * 0.9 : 0,
       u_filmAmt: film.id === 'none' ? 0 : S.filmAmt / 100, u_fSat: film.sat, u_fShoulder: film.shoulder, u_fExp: film.exp, u_fMono: film.mono ? 1 : 0,
       u_fM: film.m, u_fGamma: film.gamma, u_fLo: film.lo, u_fHi: film.hi, u_fShT: film.sh, u_fHiT: film.hl, u_fMonoW: film.mono || [0.3, 0.6, 0.1], u_fTone: film.tone,
       u_vig: [S.vigAmount / 100, S.vigMid / 100, S.vigRound / 100, Math.max(0.02, S.vigFeather / 100)], u_fade: S.fade / 100,
-      u_grain: [S.grain / 100, 0.6 + S.grainSize / 100 * 3.4, S.grainRough / 100, S.grainColor / 100], u_full: [g.outW, g.outH], u_seed: S.fxSeed,
+      u_grain: [S.grain / 100, 0.6 + S.grainSize / 100 * 3.4, S.grainRough / 100, S.grainColor / 100], u_seed: S.fxSeed,
       u_leak: [S.leak / 100, S.leakSeed, ((S.leakHue % 360) + 360) % 360 / 360], u_dust: [S.dust / 100, S.scratches / 100],
-      u_border: o.uncropped ? 0 : S.border / 100 * 0.18, u_borderRound: S.borderRound / 100, u_borderCol: S.borderColor === 'black' ? [0.02, 0.02, 0.02] : S.borderColor === 'cream' ? [0.96, 0.94, 0.88] : [1, 1, 1]
+      ...border, u_border: scan ? 0 : border.u_border
     });
+    if (scan) {
+      const wide = this.blur('sm', filmOut.tex, W, H, long * 0.03, false);
+      this.draw(F, 'scan', {
+        u_t: filmOut.tex, u_m: wide, u_px: [1 / W, 1 / H], u_r: Math.max(0.6, scale),
+        u_sM: scan.m, u_sGain: scan.gain, u_sShT: scan.shT, u_sHiT: scan.hlT, u_sK: [scan.kS, scan.kH], u_sHyper: [scan.hyS, scan.hyH],
+        u_sBW: [scan.black, scan.white], u_sEdge: scan.edge, u_sKnee: scan.knee, u_sSat: scan.sat, u_sSharp: [scan.sharp, scan.grainSup, scan.floor], ...border
+      });
+    }
     return this.last = { F, G, W, H, geo: g, scale };
   }
 

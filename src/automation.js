@@ -28,7 +28,7 @@ let finishEmulsionInit;
     return st.cur;
   }
   const snapshot = () => ({
-    app: 'Emulsion', version: '0.1.0',
+    app: 'Emulsion', version: '0.2.0',
     photos: st.photos.map(p => ({id:p.id,name:p.name,kind:p.kind,rating:p.rating,flag:p.flag})),
     current: st.cur ? {id:st.cur.id,name:st.cur.name,kind:st.cur.kind,loaded:st.srcFull,
       width:engine.src?.w ?? null,height:engine.src?.h ?? null} : null,

@@ -146,3 +146,46 @@ test('invalid enum errors do not execute object coercion', () => {
   assert.throws(()=>recipe.create({film:input}),/film/);
   assert.equal(called,false);
 });
+
+test('lab scanner settings validate per machine and default to no scanner', () => {
+  const { SCANNERS, SCAN_RANGES } = require('../src/film.js');
+  assert.equal(newSettings().scan, 'none');
+  assert.deepEqual(SCANNERS.map(s => s.id), ['none', 'frontier', 'noritsu']);
+  const settings = s => recipe.validate({format:'emulsion-recipe',version:1,settings:s}).settings;
+  const partial = settings({scan:'frontier',frontier:{d:-2,hiTone:1}});
+  assert.equal(partial.scan, 'frontier');
+  assert.deepEqual(partial.frontier, {...DEF.frontier, d:-2, hiTone:1}, 'omitted machine controls keep their defaults');
+  assert.deepEqual(partial.noritsu, DEF.noritsu);
+  for (const [id, limits] of Object.entries(SCAN_RANGES)) for (const [key, [min, max]] of Object.entries(limits)) {
+    assert.equal(settings({[id]:{[key]:min}})[id][key], min); assert.equal(settings({[id]:{[key]:max}})[id][key], max);
+    for (const value of [min - 1, max + 1, min + 0.5, '1', null, NaN]) assert.throws(() => settings({[id]:{[key]:value}}), new RegExp('settings\\.' + id + '\\.' + key), id + '.' + key + ' rejects ' + value);
+    assert.ok(DEF[id][key] >= min && DEF[id][key] <= max);
+  }
+  assert.throws(() => settings({scan:'imacon'}), /settings\.scan/);
+  assert.throws(() => settings({frontier:{chroma:100}}), /unknown or unsafe key/);
+  assert.throws(() => settings({noritsu:[]}), /plain object/);
+  assert.deepEqual(recipe.looks().scanners.map(s => s.id), ['none', 'frontier', 'noritsu']);
+});
+test('scanner keys follow lab conventions and each machine keeps its character', () => {
+  const { scanParams } = require('../src/film.js');
+  const params = (scan, extra = {}) => scanParams({...newSettings(), scan, ...extra});
+  assert.equal(params('none'), null);
+  const frontier = params('frontier'), noritsu = params('noritsu');
+  assert.deepEqual(frontier.gain, [1, 1, 1]);
+  for (const p of [frontier, noritsu]) for (let row = 0; row < 3; row++) assert.ok(Math.abs(p.m[row*3] + p.m[row*3+1] + p.m[row*3+2] - 1) < 1e-9, 'neutral greys stay neutral');
+  assert.ok(frontier.kS > 1 && noritsu.kS < 1, 'Frontier is the more contrasty machine');
+  assert.ok(frontier.black > 0 && noritsu.black < 0, 'Frontier sets a deeper black point; Noritsu keeps shadow detail');
+  assert.ok(frontier.shT[2] > frontier.shT[0], 'Frontier shadows lean cyan-blue');
+  assert.ok(frontier.floor < noritsu.floor, 'Noritsu sharpening reaches the grain');
+  const darker = params('frontier', {frontier:{...DEF.frontier, d:6}});
+  assert.ok(darker.gain.every(g => Math.abs(g - 0.5) < 1e-9), 'six density keys are one stop darker');
+  const cyan = params('noritsu', {noritsu:{...DEF.noritsu, c:12}});
+  assert.ok(Math.abs(cyan.gain[0] - 0.5) < 1e-9 && cyan.gain[1] === 1 && cyan.gain[2] === 1, 'cyan holds back red only');
+  const hard = params('frontier', {frontier:{...DEF.frontier, hiTone:1, shTone:-1}});
+  assert.ok(hard.kH > frontier.kH && hard.kS < frontier.kS);
+  assert.equal(params('frontier', {frontier:{...DEF.frontier, hyperHi:0, hyperSh:0}}).hyS, 0);
+  const flat = params('noritsu', {noritsu:{...DEF.noritsu, acOverall:5, acShadow:5, chroma:0}});
+  assert.ok(flat.kS < noritsu.kS && flat.hyS > noritsu.hyS); assert.equal(flat.sat, 0);
+  const mono = scanParams({...newSettings(), scan:'frontier'}, true);
+  assert.deepEqual([mono.shT, mono.hlT], [[0,0,0],[0,0,0]], 'black-and-white film is scanned without colour casts');
+});

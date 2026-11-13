@@ -5,7 +5,7 @@ import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {existsSync,readFileSync,readdirSync,statSync,mkdirSync,writeFileSync,mkdtempSync,renameSync,rmSync} from 'node:fs';
-import {spawnSync} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 
 const plugin=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const runtime=existsSync(path.join(plugin,'runtime','Emulsion.html')) ? path.join(plugin,'runtime') : plugin;
@@ -61,8 +61,17 @@ try{
       }
     }
     // Keep caller cwd: user-provided file paths are relative to their project.
-    const result=spawnSync(process.execPath,[path.join(target,'bin/emulsion.mjs'),...args],{stdio:'inherit',env:process.env});
-    if(result.error)throw result.error;
-    process.exitCode=result.status ?? 1;
+    const command=[path.join(target,'bin/emulsion.mjs'),...args];
+    if(args[0]==='preview'){
+      // The editor server runs until stopped: stopping the launcher must stop it too.
+      const child=spawn(process.execPath,command,{stdio:'inherit',env:process.env});
+      for(const signal of ['SIGINT','SIGTERM','SIGHUP'])process.on(signal,()=>child.kill(signal));
+      child.on('error',error=>{process.stderr.write('Emulsion launcher: '+error.message+'\n');process.exitCode=1;});
+      child.on('exit',status=>{process.exitCode=status ?? 1;});
+    }else{
+      const result=spawnSync(process.execPath,command,{stdio:'inherit',env:process.env});
+      if(result.error)throw result.error;
+      process.exitCode=result.status ?? 1;
+    }
   }
 }catch(error){process.stderr.write('Emulsion launcher: '+error.message+'\n');process.exitCode=1;}

@@ -2,7 +2,7 @@
 
 A browser darkroom and programmable photo renderer. Edit photos manually, exchange editable recipes with an AI assistant, or use the local CLI from a coding agent. All three routes use the same WebGL2 and LibRaw WebAssembly engine.
 
-**[Download the browser editor](https://github.com/joeyinspace2/Emulation/raw/refs/heads/main/Emulsion.html)** · **[Download the agent plugin](https://github.com/joeyinspace2/Emulation/raw/refs/heads/main/downloads/emulsion-plugin-v0.1.0.zip)** · [Recipe reference](docs/recipe-format.md)
+**[Download the browser editor](https://github.com/joeyinspace2/Emulation/raw/refs/heads/main/Emulsion.html)** · **[Download the agent plugin](https://github.com/joeyinspace2/Emulation/raw/refs/heads/main/downloads/emulsion-plugin-v0.2.0.zip)** · [Recipe reference](docs/recipe-format.md)
 
 Save `Emulsion.html`, then open it in a recent browser with WebGL2. No installation or API key is needed for the editor. For an AI coding agent, install the plugin below and ask: **“Use Emulsion to give this photo a warm film look and export a JPEG with its editable recipe.”**
 
@@ -11,10 +11,25 @@ Save `Emulsion.html`, then open it in a recent browser with WebGL2. No installat
 Open the downloaded **Emulsion.html** in a recent browser, or serve a checkout with `npm run preview`. The file includes its scripts, styles, film looks and RAW decoder; no runtime CDN or account is required. Import, edit and export continue working offline after loading. Browser policy can restrict opening local HTML files; serving the file on localhost is an alternative.
 
 1. Choose **Add photos** or **Open folder**, then open a photo in Develop.
-2. Edit exposure, colour, curves, film looks, crop, masks and healing.
+2. Edit exposure, colour, curves, film looks, lab scanner, crop, masks and healing.
 3. Choose **Recipes → Use current edits → Save recipe** to save a portable `.emulsion.json` file.
 4. To use an assistant's recipe, choose **Recipes → Import recipe → Apply recipe**. Controls update immediately. **Undo** restores the previous adjustments.
 5. Choose **Export** for JPEG, PNG or WebP.
+
+### Lab scanners
+
+A film photograph is made twice: once on the film, and again by the machine that scans it. In the **Film** tab, **Lab scanner** chooses that machine. **None** keeps the standard rendering. **Frontier SP-3000** and **Noritsu HS-1800** each open their own panel, laid out like the machine's own controls.
+
+| | Frontier SP-3000 | Noritsu HS-1800 |
+| --- | --- | --- |
+| Character | Punchy contrast, deep blacks, highlights close to clipping, cool cyan shadows, golden skin, cooler greens | Gentler contrast, open shadows, held highlights, neutral shadows, pinker skin, yellower greens |
+| Detail | Sharpens edges and smooths grain in flat areas | Sharpens everything, grain included |
+| Shared keys | Density, Cyan, Magenta, Yellow | Density, Cyan, Magenta, Yellow |
+| Own controls | Tone adjustment (soft, standard, hard for highlights and shadows), Hypertone levels, Saturation, Sharpness, Grain suppression | Auto contrast (overall, shadows, highlights), Chroma, Sharpness, Graininess suppression |
+
+The keys work as they do in a lab: they change the light each colour layer receives before the machine's tone curve, so a correction shifts shadows and highlights differently instead of tinting the whole image evenly. Each machine remembers its own settings when you switch, and choosing a look changes the film without changing the lab.
+
+These are models built from the machines' published controls and the way their scans are commonly described. They are not measured profiles and have no connection to Fujifilm or Noritsu. The real machines also balance density and colour automatically for each frame; here you set white balance and exposure yourself in Develop.
 
 Original photos are preserved. Recipes contain adjustments, selected LUT data and brush masks; they do not include the original photo. A source filename in a recipe is informational. Folder access and persistent catalogue writes depend on browser permissions; individual-photo import and download are available as a fallback.
 
@@ -23,7 +38,7 @@ Original photos are preserved. Recipes contain adjustments, selected LUT data an
 Example: “Give this portrait a restrained warm film look, lift the shadows, and export a JPEG. Keep the recipe editable.”
 
 - **Browser-only workflow:** an assistant supplies a recipe. Import it into your open editor; processing and export stay on your device.
-- **Codex, Claude Code and other coding agents:** the included skill teaches inspection, recipe authoring, validation, preview and export through the local CLI. Photos are processed on the agent's machine, so a cloud agent needs the photo explicitly supplied to its workspace.
+- **Codex, Claude Code and other coding agents:** the included skill teaches inspection, recipe authoring, validation, preview and export through the local CLI. Before editing, the agent opens the editor on your photo in the app's built-in browser; its edits appear there as it works, and any slider you move is saved back into the recipe it is using. Photos are processed on the agent's machine, so a cloud agent needs the photo explicitly supplied to its workspace.
 - **ChatGPT or Claude chat without file-execution tools:** use recipe exchange. This package does not include a hosted MCP endpoint or browser-tab connection. A skill alone cannot access your browser's files. Compatibility with a coding agent does not automatically make it a ChatGPT app or Claude chat connector.
 
 The shared skill lives at [skills/emulsion/SKILL.md](skills/emulsion/SKILL.md). It includes the recipe reference, tool paths, and guidance for checking the rendered result.
@@ -48,7 +63,7 @@ claude plugin install emulsion@emulsion
 
 In Claude Code, the equivalent interactive commands are `/plugin marketplace add joeyinspace2/Emulation` and `/plugin install emulsion@emulsion`. Ask for Emulsion by name, or invoke its skill where your client exposes skill commands.
 
-**ZIP installation:** [download the plugin](https://github.com/joeyinspace2/Emulation/raw/refs/heads/main/downloads/emulsion-plugin-v0.1.0.zip) and upload it through your client's plugin installation interface where supported. You can also extract it and use the absolute `emulsion/` directory in place of `joeyinspace2/Emulation` in the marketplace commands above. This repository supplies its own marketplace; it is not an approved listing in the vendors' public directories.
+**ZIP installation:** [download the plugin](https://github.com/joeyinspace2/Emulation/raw/refs/heads/main/downloads/emulsion-plugin-v0.2.0.zip) and upload it through your client's plugin installation interface where supported. You can also extract it and use the absolute `emulsion/` directory in place of `joeyinspace2/Emulation` in the marketplace commands above. This repository supplies its own marketplace; it is not an approved listing in the vendors' public directories.
 
 **Other agents:** use the complete checkout or extracted plugin and its [skill](skills/emulsion/SKILL.md). The agent needs file and terminal access for automatic rendering. Copying only `SKILL.md` loses its relative tool and reference paths. Agents without these capabilities can still generate recipes to import in the editor.
 
@@ -60,7 +75,7 @@ npm run build
 npm run package:release
 ```
 
-The result is `downloads/emulsion-plugin-v0.1.0.zip` and `downloads/SHA256SUMS` (also staged in `dist/`). The ZIP contains a single `emulsion/` folder with both plugin manifests, the skill, examples, launcher, compiled HTML, CLI, runtime lockfile, third-party notices and decoder sources. It does not bundle Chromium or `node_modules`.
+The result is `downloads/emulsion-plugin-v0.2.0.zip` and `downloads/SHA256SUMS` (also staged in `dist/`). The ZIP contains a single `emulsion/` folder with both plugin manifests, the skill, examples, launcher, compiled HTML, CLI, runtime lockfile, third-party notices and decoder sources. It does not bundle Chromium or `node_modules`.
 
 The launcher resolves paths relative to its own installation, so it works from any photo project directory:
 
@@ -69,7 +84,7 @@ node /path/to/emulsion/scripts/emulsion.mjs setup
 node /path/to/emulsion/scripts/emulsion.mjs looks
 ```
 
-`setup` installs exact Node dependencies into a content-addressed cache, leaving plugin files untouched. Set `EMULSION_CACHE` to a writable directory if necessary. Use `setup --browser` to download Playwright Chromium, or set `EMULSION_BROWSER` to an existing Chromium executable. Browser download/system dependencies depend on the host environment. The launcher's help, looks, validate and preview commands do not require a browser installation.
+`setup` installs exact Node dependencies into a content-addressed cache, leaving plugin files untouched. Set `EMULSION_CACHE` to a writable directory if necessary. Use `setup --browser` to download Playwright Chromium, or set `EMULSION_BROWSER` to an existing Chromium executable. Browser download/system dependencies depend on the host environment. The launcher's help, looks, validate and preview commands do not require a browser installation or `setup`.
 
 ## Local CLI
 
@@ -89,11 +104,14 @@ node bin/emulsion.mjs render /path/to/portrait.png \
   --recipe examples/warm-portrait.emulsion.json \
   --output /path/to/portrait-preview.jpg --max 1600 --software-gl
 npm run preview
+node bin/emulsion.mjs preview /path/to/portrait.png --recipe /path/to/portrait.emulsion.json
 ```
+
+`preview` with a photo starts a live editing session and prints its loopback URL. The editor opens that photo with the recipe applied, and the recipe file becomes shared state: saving the file updates the open editor within about a second, and edits made in the editor are written back to the file as a complete recipe. A missing recipe file is created empty. If both sides change at once, the file's newer contents win and the editor's change stays in its undo history. The photo itself is only read.
 
 `--software-gl` enables Chromium's SwiftShader for machines without a usable GPU. If Chromium is already installed, `EMULSION_BROWSER=/usr/bin/chromium` avoids a browser download. Hardware rendering is also supported when the host provides it.
 
-Commands print JSON to stdout and errors to stderr with a nonzero exit status. The CLI reads only explicit photo and recipe paths, serves only the compiled HTML over loopback, blocks outbound browser requests, and closes the browser/server after each operation. A file extension must agree with `recipe.output.type` when specified. Without an output setting, `.jpg`, `.png` or `.webp` selects the encoder. `--max 0` means full size; other positive integers set the maximum long edge.
+Commands print JSON to stdout and errors to stderr with a nonzero exit status. The CLI reads only explicit photo and recipe paths, serves only the compiled HTML over loopback, blocks outbound browser requests, and closes the browser/server after each operation. A live `preview` additionally serves its one photo and recipe under an unguessable path, accepts only validated recipes, and refuses requests addressed to anything but a loopback name; `--allow-host <host>` admits one forwarded host when an app shows the editor through its own preview address. A file extension must agree with `recipe.output.type` when specified. Without an output setting, `.jpg`, `.png` or `.webp` selects the encoder. `--max 0` means full size; other positive integers set the maximum long edge.
 
 Existing output files require `--overwrite`. Source photos, recipe inputs and their aliases cannot be overwritten. The CLI deliberately uses a new browser context for each operation: recipe files are the persistent project state.
 

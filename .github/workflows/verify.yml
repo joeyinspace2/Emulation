@@ -6,6 +6,11 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the version in package.json as a release (main only)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -40,24 +45,32 @@ jobs:
             downloads/emulsion-plugin-*.zip
             downloads/SHA256SUMS
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    # A pushed vX.Y.Z tag, or a manual run on main with "publish" ticked.
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main')
     needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Check release tag
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: node -e 'if (process.env.RELEASE_TAG !== "v" + require("./package.json").version) process.exit(1)'
+      - name: Resolve release tag
+        id: tag
+        run: |
+          version="v$(node -p 'require("./package.json").version')"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $version" >&2
+            exit 1
+          fi
+          echo "tag=$version" >> "$GITHUB_OUTPUT"
       - name: Publish verified files
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
         run: |
           mkdir -p release
           cp Emulsion.html "downloads/emulsion-plugin-$RELEASE_TAG.zip" release/
           cd release
           sha256sum Emulsion.html "emulsion-plugin-$RELEASE_TAG.zip" > SHA256SUMS
-          gh release create "$RELEASE_TAG" ./* --verify-tag --title "Emulsion $RELEASE_TAG" --notes-file ../docs/release-notes.md
+          # A manual run creates the tag on the verified commit. It fails if that release already exists.
+          if [ "$GITHUB_REF_TYPE" = tag ]; then where=--verify-tag; else where="--target=$GITHUB_SHA"; fi
+          gh release create "$RELEASE_TAG" ./* "$where" --title "Emulsion $RELEASE_TAG" --notes-file ../docs/release-notes.md
